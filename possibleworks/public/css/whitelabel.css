@@ -1,0 +1,28 @@
+/*
+ * Possibleworks White-Label CSS
+ * Hide unwanted Frappe branding elements from the Desk UI.
+ * Loaded via app_include_css in hooks.py — cached by the browser.
+ */
+
+/* Hide "About" menu items */
+[data-label="About"],
+[onclick*="show_about"] {
+	display: none !important;
+}
+
+/* Hide "Support" / "Frappe Support" menu items */
+[data-label="Support"],
+[data-label="Frappe Support"],
+[data-label*="Frappe Support"] {
+	display: none !important;
+}
+
+/* Hide dynamic help links container */
+#help-links {
+	display: none !important;
+}
+
+/* Hide leftover dividers from removed items */
+.dropdown-help .dropdown-divider:first-child {
+	display: none !important;
+}
