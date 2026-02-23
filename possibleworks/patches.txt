@@ -1,1 +1,3 @@
-# No patches
+# Patches (applied on bench migrate)
+possibleworks.patches.seed_ai_doctype_config
+possibleworks.patches.remove_old_auto_create_fields

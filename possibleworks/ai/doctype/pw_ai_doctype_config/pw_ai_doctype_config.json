@@ -1,0 +1,63 @@
+{
+    "actions": [],
+    "creation": "2026-02-22 16:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "doctype_name",
+        "button_label",
+        "column_break_1",
+        "is_enabled",
+        "extraction_prompt"
+    ],
+    "fields": [
+        {
+            "bold": 1,
+            "columns": 3,
+            "fieldname": "doctype_name",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "DocType",
+            "options": "DocType",
+            "reqd": 1
+        },
+        {
+            "columns": 2,
+            "fieldname": "button_label",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Button Label",
+            "description": "Leave blank to use the default label"
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "columns": 1,
+            "default": "1",
+            "fieldname": "is_enabled",
+            "fieldtype": "Check",
+            "in_list_view": 1,
+            "label": "Enabled"
+        },
+        {
+            "fieldname": "extraction_prompt",
+            "fieldtype": "Code",
+            "label": "Custom Extraction Prompt",
+            "options": "Text",
+            "description": "Override the default AI extraction prompt for this DocType. Leave blank to use the system default."
+        }
+    ],
+    "istable": 1,
+    "links": [],
+    "modified": "2026-02-22 16:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "AI",
+    "name": "PW AI Doctype Config",
+    "owner": "Administrator",
+    "permissions": [],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 0
+}

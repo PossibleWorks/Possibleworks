@@ -2,6 +2,7 @@
 name = "possibleworks"
 version = "1.0.0"
 description = "White-label branding app for Frappe/ERPNext"
+dependencies = ["openai>=1.0.0", "PyMuPDF>=1.22.0"]
 requires-python = ">=3.10"
 readme = "README.md"
 authors = [

@@ -1,0 +1,129 @@
+{
+    "actions": [],
+    "allow_rename": 0,
+    "creation": "2026-02-22 15:30:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "api_section",
+        "openai_api_key",
+        "column_break_api",
+        "model",
+        "master_data_section",
+        "auto_create_supplier",
+        "column_break_master",
+        "auto_create_item",
+        "doctype_config_section",
+        "doctype_config",
+        "prompt_section",
+        "extraction_prompt_hint"
+    ],
+    "fields": [
+        {
+            "fieldname": "api_section",
+            "fieldtype": "Section Break",
+            "label": "OpenAI API Configuration"
+        },
+        {
+            "fieldname": "openai_api_key",
+            "fieldtype": "Password",
+            "label": "OpenAI API Key",
+            "reqd": 1,
+            "description": "Your OpenAI API key. Stored encrypted in the database."
+        },
+        {
+            "fieldname": "column_break_api",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "gpt-4o",
+            "fieldname": "model",
+            "fieldtype": "Select",
+            "label": "Model",
+            "options": "gpt-4o\ngpt-4o-mini",
+            "reqd": 1,
+            "description": "Uses GPT-4o vision model to extract data from scanned PDFs or images into ERPNext fields."
+        },
+        {
+            "fieldname": "master_data_section",
+            "fieldtype": "Section Break",
+            "label": "Master Data Handling"
+        },
+        {
+            "fetch_from": "",
+            "fetch_if_empty": 0,
+            "fieldname": "auto_create_master_data",
+            "fieldtype": "Check",
+            "hidden": 0,
+            "ignore_user_permissions": 0,
+            "ignore_xss_filter": 0,
+            "in_global_search": 0,
+            "in_list_view": 0,
+            "in_preview": 0,
+            "in_standard_filter": 0,
+            "is_system_generated": 0,
+            "label": "Auto Create Master Data",
+            "length": 0,
+            "no_copy": 0,
+            "non_negative": 0,
+            "print_hide": 0,
+            "print_hide_if_no_value": 0,
+            "read_only": 0,
+            "remember_last_selected_value": 0,
+            "report_hide": 0,
+            "reqd": 0,
+            "search_index": 0,
+            "set_only_once": 0,
+            "translatable": 0,
+            "unique": 0,
+            "default": "0",
+            "description": "If enabled, creates new Supplier and Item records when no match is found. If disabled, leaves fields blank for manual selection."
+        },
+        {
+            "fieldname": "doctype_config_section",
+            "fieldtype": "Section Break",
+            "label": "DocType Configuration"
+        },
+        {
+            "fieldname": "doctype_config",
+            "fieldtype": "Table",
+            "label": "Enabled DocTypes",
+            "options": "PW AI Doctype Config",
+            "description": "Configure which DocTypes show the AI scan button and customize their extraction prompts."
+        },
+        {
+            "fieldname": "prompt_section",
+            "fieldtype": "Section Break",
+            "label": "Advanced",
+            "collapsible": 1
+        },
+        {
+            "fieldname": "extraction_prompt_hint",
+            "fieldtype": "Small Text",
+            "label": "Global Additional Instructions",
+            "description": "Optional extra instructions appended to ALL prompts (e.g. 'All amounts are in INR')."
+        }
+    ],
+    "issingle": 1,
+    "links": [],
+    "modified": "2026-02-22 16:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "AI",
+    "name": "PW AI Settings",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "print": 1,
+            "read": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 0
+}
