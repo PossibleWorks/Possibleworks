@@ -35,8 +35,8 @@ def set_default_branding():
 		if not ws.favicon or "frappe-favicon.svg" in ws.favicon:
 			ws.favicon = "/assets/possibleworks/images/possibleworks-logo.svg"
 
-		if not ws.brand_logo or "frappe-framework-logo.svg" in ws.brand_logo:
-			ws.brand_logo = "/assets/possibleworks/images/possibleworks-logo-big.svg"
+		if not ws.banner_image or "frappe-framework-logo.svg" in ws.banner_image:
+			ws.banner_image = "/assets/possibleworks/images/possibleworks-logo-big.svg"
 
 		if not ws.app_logo or "frappe-framework-logo.svg" in ws.app_logo:
 			ws.app_logo = "/assets/possibleworks/images/possibleworks-logo-big.svg"
