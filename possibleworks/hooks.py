@@ -27,7 +27,7 @@ website_context = {
 
 doc_events = {
 	"Leave Application": {
-		"validate": "frappe_customizations.leave_application.validate_custom_attachments_required",
+		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
 	},
 }
 
