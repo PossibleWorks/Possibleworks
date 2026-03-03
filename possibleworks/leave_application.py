@@ -28,7 +28,7 @@ def validate_custom_attachments_required(doc, method=None):
 	if not attachments or len(attachments) == 0:
 		frappe.throw(
 			_(
-				"Leave Type {0} requires attachments. Please add at least one attachment in the Attachments table before saving."
+				"Attachment is mandatory for {0}. Please upload the required document to proceed."
 			).format(frappe.bold(doc.leave_type)),
-			title=_("Attachments Required"),
+			title=_("Attachment Required"),
 		)
