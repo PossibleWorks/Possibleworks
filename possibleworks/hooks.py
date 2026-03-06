@@ -29,9 +29,27 @@ doc_events = {
 	"Leave Application": {
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
 	},
+    "*": {
+        "after_insert": "possibleworks.observer.observer.handle_after_insert",
+        "on_update": "possibleworks.observer.observer.handle_on_update",
+        "on_submit": "possibleworks.observer.observer.handle_on_submit",
+        "on_cancel": "possibleworks.observer.observer.handle_on_cancel",
+        "before_update": "possibleworks.observer.observer.handle_before_update",
+    },
 }
 
 
+# ============================================================================
+# Scheduler Events - Batch Processing
+# ============================================================================
+
+scheduler_events = {
+    "cron": {
+        "*/2 * * * *": [
+            "possibleworks.observer.batch_processor.process_event_batch"
+        ]
+    }
+}
 
 # Fixtures: Custom Fields for these doctypes are synced via standard bench.
 # From a site that has the custom fields:
