@@ -30,11 +30,10 @@ doc_events = {
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
 	},
     "*": {
-        "after_insert": "possibleworks.observer.observer.handle_after_insert",
-        "on_update": "possibleworks.observer.observer.handle_on_update",
-        "on_submit": "possibleworks.observer.observer.handle_on_submit",
-        "on_cancel": "possibleworks.observer.observer.handle_on_cancel",
-        "before_update": "possibleworks.observer.observer.handle_before_update",
+        "after_insert": "possibleworks.observer.observer.handle_workflow_event",
+        "on_update": "possibleworks.observer.observer.handle_workflow_event",
+        "on_submit": "possibleworks.observer.observer.handle_workflow_event",
+        "on_cancel": "possibleworks.observer.observer.handle_workflow_event",
     },
 }
 

@@ -36,8 +36,8 @@ class WorkflowService:
             "workflow_name": "Leave Approval",
             "state_field": "workflow_state",
             "current_state": "Draft",
-            "transitions": [...],
-            "allowed_roles": [...]
+            "next_states": [...],
+            "next_roles": [...]
         }
         """
         try:
@@ -73,8 +73,8 @@ class WorkflowService:
                 "workflow_name": workflow_name,
                 "state_field": state_field,
                 "current_state": current_state,
-                "transitions": transitions,
-                "allowed_roles": allowed_roles
+                "next_states": transitions,
+                "next_roles": allowed_roles
             }
 
         except Exception as e:

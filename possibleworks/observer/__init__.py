@@ -18,15 +18,7 @@ Main components:
 - batch_processor.py: External API integration
 """
 
-from .observer import (
-    WorkflowEventObserver,
-    handle_after_insert,
-    handle_on_update,
-    handle_on_submit,
-    handle_on_cancel,
-    handle_before_insert,
-    handle_before_update,
-)
+from .observer import WorkflowEventObserver, handle_workflow_event
 from .payload_builder import PayloadBuilder
 from .workflow_service import WorkflowService
 from .redis_buffer_service import RedisBufferService
@@ -36,6 +28,7 @@ from .settings_helper import SettingsHelper
 __version__ = "1.0.0"
 __all__ = [
     "WorkflowEventObserver",
+    "handle_workflow_event",
     "PayloadBuilder",
     "WorkflowService",
     "RedisBufferService",

@@ -5,7 +5,6 @@ Main event listener for Frappe document changes.
 
 import frappe
 from typing import Any
-from .constants import IGNORED_DOCTYPES
 from .settings_helper import SettingsHelper
 from .payload_builder import PayloadBuilder
 from .redis_buffer_service import RedisBufferService
@@ -25,10 +24,9 @@ class WorkflowEventObserver:
     Registered in hooks.py like:
     doc_events = {
         "*": {
-            "after_insert": "possibleworks.observer.observer.handle_after_insert",
-            "on_update": "possibleworks.observer.observer.handle_on_update",
-            "on_submit": "possibleworks.observer.observer.handle_on_submit",
-            "on_cancel": "possibleworks.observer.observer.handle_on_cancel",
+            "after_insert": "possibleworks.observer.observer.handle_workflow_event",
+            "on_update": "possibleworks.observer.observer.handle_workflow_event",
+            ...
         }
     }
     """
@@ -50,15 +48,7 @@ class WorkflowEventObserver:
         if not SettingsHelper.is_observer_enabled():
             return False
 
-        # Ignore internal system doctypes
-        if doctype in IGNORED_DOCTYPES:
-            frappe.logger().debug(f"Observer: Ignoring system doctype: {doctype}")
-            return False
 
-        # Ignore custom doctypes that start with underscore (test/temp docs)
-        if doctype.startswith("_"):
-            return False
-        
         # Only process doctypes that have an active workflow
         if not WorkflowService.has_workflow(doctype):
             frappe.logger().debug(
@@ -83,6 +73,34 @@ class WorkflowEventObserver:
         try:
             # Quick check: should we process this?
             if not WorkflowEventObserver.should_process(doc.doctype):
+                return False
+
+            if event_type == "after_insert":
+                # Always fire — doc is new, workflow just initialized
+                pass
+
+            elif event_type == "on_update":
+                doc_before = doc.get_doc_before_save()
+                if not doc_before:
+                    frappe.logger().debug(
+                        f"Observer: Skipping {doc.doctype}/{doc.name} on_update — "
+                        f"no prior version (fired during insert transaction)"
+                    )
+                    return False
+
+                if not WorkflowEventObserver._workflow_state_changed(doc, doc_before):
+                    frappe.logger().debug(
+                        f"Observer: Skipping {doc.doctype}/{doc.name} — "
+                        f"workflow state unchanged"
+                    )
+                    return False
+
+            elif event_type in ("on_submit", "on_cancel"):
+                # These are explicit lifecycle transitions — always fire
+                pass
+
+            else:
+                # before_insert or anything else — skip
                 return False
 
             frappe.logger().debug(
@@ -118,36 +136,44 @@ class WorkflowEventObserver:
             )
             return False
 
+    @staticmethod
+    def _workflow_state_changed(doc: Any, doc_before: Any) -> bool:
+        """
+        Compares workflow state between doc_before and current doc.
+        Both are passed explicitly — no internal get_doc_before_save() calls.
+        """
+        try:
+            workflow_name = WorkflowService.get_workflow_name(doc.doctype)
+            if not workflow_name:
+                return False
+    
+            state_field = WorkflowService.get_state_field(workflow_name)
+            if not state_field:
+                return False
+    
+            old_state = getattr(doc_before, state_field, None)
+            new_state = getattr(doc, state_field, None)
+    
+            frappe.logger().info(
+                f"_workflow_state_changed: {doc.doctype}/{doc.name} "
+                f"old='{old_state}' new='{new_state}' changed={old_state != new_state}"
+            )
+    
+            return old_state != new_state
+    
+        except Exception as e:
+            frappe.logger().warning(
+                f"_workflow_state_changed error for {doc.doctype}/{doc.name}: {str(e)}"
+            )
+            return False
 
 # ============================================================================
 # Hook functions - these are called by Frappe
 # ============================================================================
 
-def handle_after_insert(doc: Any, method: str = None):
-    """Handle after_insert event"""
-    WorkflowEventObserver.process_event(doc, "after_insert")
-
-
-def handle_on_update(doc: Any, method: str = None):
-    """Handle on_update event"""
-    WorkflowEventObserver.process_event(doc, "on_update")
-
-
-def handle_on_submit(doc: Any, method: str = None):
-    """Handle on_submit event"""
-    WorkflowEventObserver.process_event(doc, "on_submit")
-
-
-def handle_on_cancel(doc: Any, method: str = None):
-    """Handle on_cancel event"""
-    WorkflowEventObserver.process_event(doc, "on_cancel")
-
-
-def handle_before_insert(doc: Any, method: str = None):
-    """Handle before_insert event"""
-    WorkflowEventObserver.process_event(doc, "before_insert")
-
-
-def handle_before_update(doc: Any, method: str = None):
-    """Handle before_update event"""
-    WorkflowEventObserver.process_event(doc, "before_update")
+def handle_workflow_event(doc: Any, method: str = None):
+    """Generic handler for all workflow-related doc events."""
+    # `method` is the event name: "after_insert", "on_update", etc.
+    if not method:
+        return
+    WorkflowEventObserver.process_event(doc, method)
