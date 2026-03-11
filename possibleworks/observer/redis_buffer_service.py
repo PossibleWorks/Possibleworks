@@ -38,11 +38,6 @@ class RedisBufferService:
             True if successful, False otherwise
         """
         try:
-            # Check if Redis buffering is enabled
-            # if not SettingsHelper.get_redis_enabled():
-            if False:
-                frappe.logger().debug("RedisBufferService: Redis buffering disabled")
-                return False
 
             # Get Redis connection
             redis_client = frappe.cache()

@@ -10,7 +10,6 @@ import json
 import requests
 from typing import List, Dict, Tuple
 from datetime import datetime, timezone
-from .constants import BATCH_SIZE
 from .redis_buffer_service import RedisBufferService
 from .settings_helper import SettingsHelper
 
@@ -44,8 +43,8 @@ class BatchProcessor:
         """
         try:
             # Check if webhook is configured
-            # webhook_url = SettingsHelper.get_webhook_url()
-            webhook_url = "http://localhost:4000/event"
+            url = SettingsHelper.get_webhook_url()
+            webhook_url = f"{url}/frappe/workflow-events"
             if not webhook_url:
                 frappe.logger().warning(
                     "BatchProcessor: Webhook URL not configured in settings"
@@ -57,8 +56,7 @@ class BatchProcessor:
                 }
 
             # Get batch size from settings
-            # batch_size = SettingsHelper.get_batch_size()
-            batch_size = 100
+            batch_size = SettingsHelper.get_batch_size()
 
             # Pop events from Redis
             events = RedisBufferService.pop_batch(batch_size)
