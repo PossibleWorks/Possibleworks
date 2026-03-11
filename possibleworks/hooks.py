@@ -67,6 +67,6 @@ fixtures = [
     # Add this — export the child DocType definition itself
     {
         "doctype": "DocType",
-        "filters": [["name", "in", ["Leave Supporting Documents"]]],
+        "filters": [["name", "in", ["Leave Supporting Documents","Possibleworks Settings"]]],
     },
 ]
