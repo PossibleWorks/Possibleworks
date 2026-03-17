@@ -1,0 +1,125 @@
+{
+ "actions": [],
+ "creation": "2026-03-11 23:50:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "general_settings_tab",
+  "enable_ai_invoice_processing",
+  "api_settings_section",
+  "column_break_api_1",
+  "openai_model",
+  "file_settings_section",
+  "allowed_file_types",
+  "column_break_file_1",
+  "max_file_size_mb",
+  "supported_doctypes_section",
+  "supported_doctypes"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_settings_tab",
+   "fieldtype": "Tab Break",
+   "label": "General Settings"
+  },
+  {
+   "default": "1",
+   "description": "Toggle to enable or disable AI Document Processing across the system",
+   "fieldname": "enable_ai_invoice_processing",
+   "fieldtype": "Check",
+   "label": "Enable AI Document Processing"
+  },
+  {
+   "fieldname": "api_settings_section",
+   "fieldtype": "Section Break",
+   "label": "OpenAI API Settings"
+  },
+  {
+   "fieldname": "column_break_api_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "gpt-4.1-mini",
+   "description": "OpenAI model to use for document extraction. gpt-4o is recommended; gpt-4o-mini / gpt-4.1-mini are faster and cheaper.",
+   "fieldname": "openai_model",
+   "fieldtype": "Select",
+   "label": "OpenAI Model Name",
+   "options": "gpt-4o\ngpt-4o-mini\ngpt-4.1\ngpt-4.1-mini\ngpt-4-turbo\no1-preview\no1-mini"
+  },
+  {
+   "fieldname": "file_settings_section",
+   "fieldtype": "Section Break",
+   "label": "File Settings"
+  },
+  {
+   "default": "PDF\nJPG\nPNG\nWEBP",
+   "description": "File types allowed for document upload. One per line.",
+   "fieldname": "allowed_file_types",
+   "fieldtype": "Small Text",
+   "label": "Allowed File Types"
+  },
+  {
+   "fieldname": "column_break_file_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "10",
+   "description": "Maximum file size allowed for uploaded documents (in MB)",
+   "fieldname": "max_file_size_mb",
+   "fieldtype": "Int",
+   "label": "Maximum File Size (MB)"
+  },
+  {
+   "fieldname": "supported_doctypes_section",
+   "fieldtype": "Section Break",
+   "label": "Supported Document Types"
+  },
+  {
+   "description": "DocTypes where AI Document Processing is enabled.",
+   "cannot_add_rows": 1,
+   "cannot_delete_rows": 1,
+   "fieldname": "supported_doctypes",
+   "fieldtype": "Table",
+   "label": "Supported DocTypes",
+   "options": "AI Document Processor Supported DocType"
+  }
+ ],
+ "hide_toolbar": 1,
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-03-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "AP Invoice Processing",
+ "name": "AI Document Processor Settings",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Accounts User"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

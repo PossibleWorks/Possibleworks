@@ -1,0 +1,178 @@
+{
+ "actions": [],
+ "creation": "2026-03-11 23:55:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "file",
+  "file_url",
+  "target_doctype",
+  "status",
+  "column_break_log_1",
+  "triggered_by",
+  "page_count",
+  "section_usage",
+  "model_used",
+  "agent_steps",
+  "column_break_usage_1",
+  "input_tokens",
+  "output_tokens",
+  "cached_tokens",
+  "total_tokens",
+  "estimated_cost_usd",
+  "tool_calls_log",
+  "raw_openai_response",
+  "final_submitted_values"
+ ],
+ "fields": [
+  {
+   "fieldname": "file",
+   "fieldtype": "Data",
+   "label": "File Document Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "file_url",
+   "fieldtype": "Data",
+   "label": "File URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "label": "Target DocType",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Success\nFailed\nError",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_log_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "triggered_by",
+   "fieldtype": "Link",
+   "label": "Triggered By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "page_count",
+   "fieldtype": "Int",
+   "label": "Page Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tool_calls_log",
+   "fieldtype": "Code",
+   "label": "Tool Calls Log",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "Ordered list of every tool the AI called, with arguments and results"
+  },
+  {
+   "fieldname": "raw_openai_response",
+   "fieldtype": "Code",
+   "label": "Raw AI Extraction (JSON)",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "final_submitted_values",
+   "fieldtype": "Code",
+   "label": "Final Values Submitted by User",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_usage",
+   "fieldtype": "Section Break",
+   "label": "AI Usage & Cost"
+  },
+  {
+   "fieldname": "model_used",
+   "fieldtype": "Data",
+   "label": "Model Used",
+   "read_only": 1
+  },
+  {
+   "fieldname": "agent_steps",
+   "fieldtype": "Int",
+   "label": "Agent Steps",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_usage_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "input_tokens",
+   "fieldtype": "Int",
+   "label": "Input Tokens",
+   "read_only": 1
+  },
+  {
+   "fieldname": "output_tokens",
+   "fieldtype": "Int",
+   "label": "Output Tokens",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cached_tokens",
+   "fieldtype": "Int",
+   "label": "Cached Tokens",
+   "read_only": 1,
+   "description": "Portion of input tokens served from OpenAI prompt cache (billed at 50% rate)"
+  },
+  {
+   "fieldname": "total_tokens",
+   "fieldtype": "Int",
+   "label": "Total Tokens",
+   "read_only": 1
+  },
+  {
+   "fieldname": "estimated_cost_usd",
+   "fieldtype": "Float",
+   "label": "Estimated Cost (USD)",
+   "read_only": 1,
+   "precision": "6"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-03-11 23:55:00.000000",
+ "modified_by": "Administrator",
+ "module": "AP Invoice Processing",
+ "name": "AI Document Extraction Log",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "track_changes": 1
+}
