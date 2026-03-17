@@ -595,6 +595,14 @@ function _fill_invoice_form(frm, parsed, match, file_url, log_id) {
 				});
 				frm.refresh_field("items");
 				_pw_apply_unmatched_item_styles(frm);
+
+				// Recalculate net_total, tax total, grand_total after all item values
+				// are finalized. Direct row assignment (used to avoid get_item_details
+				// AJAX) bypasses the field triggers that normally kick off this calc.
+				if (frm.cscript && typeof frm.cscript.calculate_taxes_and_totals === "function") {
+					frm.cscript.calculate_taxes_and_totals();
+				}
+				frm.refresh_fields();
 			});
 		});
 
