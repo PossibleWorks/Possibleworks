@@ -1,0 +1,176 @@
+{
+ "actions": [],
+ "creation": "2026-03-12 22:30:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "batch_id",
+  "file_count",
+  "target_doctype",
+  "status",
+  "column_break_queue_1",
+  "triggered_by",
+  "total_invoices_created",
+  "total_failed",
+  "section_break_dashboard",
+  "dashboard_html",
+  "section_break_files",
+  "file_urls",
+  "section_break_perf",
+  "processing_time_seconds",
+  "error_message",
+  "section_break_results",
+  "processing_log",
+  "created_invoices"
+ ],
+ "fields": [
+  {
+   "fieldname": "batch_id",
+   "fieldtype": "Data",
+   "label": "Batch ID",
+   "read_only": 1,
+   "in_list_view": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "file_count",
+   "fieldtype": "Int",
+   "label": "File Count",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "label": "Target DocType",
+   "options": "DocType",
+   "read_only": 1,
+   "default": "Purchase Invoice",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Queued\nProcessing\nDone\nPartially Done\nFailed",
+   "read_only": 1,
+   "default": "Queued",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "dashboard_html",
+   "fieldtype": "HTML",
+   "label": "Live Processing Dashboard"
+  },
+  {
+   "fieldname": "column_break_queue_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "triggered_by",
+   "fieldtype": "Link",
+   "label": "Triggered By",
+   "options": "User",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "total_invoices_created",
+   "fieldtype": "Int",
+   "label": "Documents Created",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "total_failed",
+   "fieldtype": "Int",
+   "label": "Failed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_dashboard",
+   "fieldtype": "Section Break",
+   "label": "Batch Dashboard"
+  },
+  {
+   "fieldname": "section_break_files",
+   "fieldtype": "Section Break",
+   "label": "Uploaded Files"
+  },
+  {
+   "fieldname": "file_urls",
+   "fieldtype": "Code",
+   "label": "File URLs (JSON)",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_perf",
+   "fieldtype": "Section Break",
+   "label": "Performance & Errors"
+  },
+  {
+   "fieldname": "processing_time_seconds",
+   "fieldtype": "Float",
+   "label": "Processing Time (Seconds)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_results",
+   "fieldtype": "Section Break",
+   "label": "Processing Results"
+  },
+  {
+   "fieldname": "processing_log",
+   "fieldtype": "Code",
+   "label": "Per-File Processing Log",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "created_invoices",
+   "fieldtype": "Code",
+   "label": "Created Document IDs (JSON)",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-03-12 23:25:00.000000",
+ "modified_by": "Administrator",
+ "module": "AP Invoice Processing",
+ "name": "AI Document Queue",
+ "naming_rule": "Expression",
+ "autoname": "format:AIBATCH-{####}",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}
