@@ -2,6 +2,39 @@
 import frappe
 
 
+def seed_ai_settings():
+	"""
+	Ensure the AI Document Processor Settings Single doc exists and has all
+	supported_doctypes rows populated.
+
+	Runs after every bench migrate (idempotent — skipped when rows already exist).
+	This is the seeder that was missing: bench migrate creates the DocType schema
+	but never creates data rows in the child table for Single doctypes.
+	"""
+	from possibleworks.ap_invoice_processing.constants import ROLLOUT_DOCTYPES, SETTINGS_DOCTYPE
+
+	try:
+		settings = frappe.get_single(SETTINGS_DOCTYPE)
+
+		# Only seed when the table is genuinely empty (fresh install or first deploy).
+		# If the admin has already saved the Settings page the rows will be present —
+		# don't overwrite them.
+		if settings.supported_doctypes:
+			return
+
+		for dt in ROLLOUT_DOCTYPES:
+			settings.append("supported_doctypes", {"document_type": dt, "enabled": 1})
+
+		settings.flags.ignore_mandatory = True
+		settings.save(ignore_permissions=True)
+		frappe.db.commit()
+	except Exception as e:
+		frappe.log_error(
+			title="Possibleworks: AI Settings seed failed",
+			message=str(e),
+		)
+
+
 def set_default_branding():
 	"""Set System Settings and Website Settings for Possibleworks branding."""
 

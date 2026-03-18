@@ -41,6 +41,7 @@ doctype_list_js = {
 }
 
 after_install = "possibleworks.setup.after_install.set_default_branding"
+after_migrate = "possibleworks.setup.after_install.seed_ai_settings"
 
 website_context = {
 	"favicon": "/assets/possibleworks/images/possibleworks-logo.svg",
