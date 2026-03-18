@@ -13,6 +13,8 @@ import openai
 from pdf2image import convert_from_bytes
 from pdf2image.exceptions import PDFPageCountError, PDFSyntaxError
 
+from possibleworks.ap_invoice_processing.bin_paths import POPPLER_PATH
+
 from possibleworks.ap_invoice_processing.doctype.ai_document_processor_settings.ai_document_processor_settings import (
 	APProcessorSettings,
 )
@@ -62,9 +64,9 @@ def extract_data_from_file(file_name, target_doctype="Purchase Invoice"):
 			# pdftoppm can render them fine. On PDFPageCountError we retry without
 			# last_page (skips pdfinfo) and slice the result to the cap.
 			try:
-				images = convert_from_bytes(fcontent, dpi=150, first_page=1, last_page=_MAX_PDF_PAGES)
+				images = convert_from_bytes(fcontent, dpi=150, first_page=1, last_page=_MAX_PDF_PAGES, poppler_path=POPPLER_PATH)
 			except PDFPageCountError:
-				images = convert_from_bytes(fcontent, dpi=150, first_page=1)
+				images = convert_from_bytes(fcontent, dpi=150, first_page=1, poppler_path=POPPLER_PATH)
 				images = images[:_MAX_PDF_PAGES]
 			page_count = len(images)
 			for img in images:
