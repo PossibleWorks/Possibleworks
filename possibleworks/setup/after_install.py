@@ -4,26 +4,45 @@ import frappe
 
 def seed_ai_settings():
 	"""
-	Ensure the AI Document Processor Settings Single doc exists and has all
-	supported_doctypes rows populated.
+	Keep AI Document Processor Settings.supported_doctypes aligned with the
+	current rollout.
 
-	Runs after every bench migrate (idempotent — skipped when rows already exist).
-	This is the seeder that was missing: bench migrate creates the DocType schema
-	but never creates data rows in the child table for Single doctypes.
+	Runs after every bench migrate so fresh sites get the default rows and
+	existing sites are pruned when the rollout scope changes.
 	"""
 	from possibleworks.ap_invoice_processing.constants import ROLLOUT_DOCTYPES, SETTINGS_DOCTYPE
 
 	try:
-		settings = frappe.get_single(SETTINGS_DOCTYPE)
-
-		# Only seed when the table is genuinely empty (fresh install or first deploy).
-		# If the admin has already saved the Settings page the rows will be present —
-		# don't overwrite them.
-		if settings.supported_doctypes:
+		if not frappe.db.exists("DocType", SETTINGS_DOCTYPE):
 			return
 
-		for dt in ROLLOUT_DOCTYPES:
-			settings.append("supported_doctypes", {"document_type": dt, "enabled": 1})
+		settings = frappe.get_single(SETTINGS_DOCTYPE)
+		existing_enabled = {}
+		for row in list(settings.supported_doctypes or []):
+			dt = (row.document_type or "").strip()
+			if not dt:
+				continue
+			existing_enabled[dt] = 1 if row.enabled else 0
+
+		desired_rows = [
+			{"document_type": dt, "enabled": existing_enabled.get(dt, 1)}
+			for dt in ROLLOUT_DOCTYPES
+		]
+		current_rows = [
+			{
+				"document_type": (row.document_type or "").strip(),
+				"enabled": 1 if row.enabled else 0,
+			}
+			for row in list(settings.supported_doctypes or [])
+			if (row.document_type or "").strip()
+		]
+
+		if current_rows == desired_rows:
+			return
+
+		settings.set("supported_doctypes", [])
+		for row in desired_rows:
+			settings.append("supported_doctypes", row)
 
 		settings.flags.ignore_mandatory = True
 		settings.save(ignore_permissions=True)

@@ -6,25 +6,13 @@ EXTRACTION_LOG_DOCTYPE = "AI Document Extraction Log"
 
 ROLLOUT_DOCTYPES = (
 	"Purchase Invoice",
-	"Purchase Receipt",
-	"Supplier Quotation",
-	"Payment Entry",
-	"Sales Order",
-	"Quotation",
-	"Delivery Note",
 )
 
 SUPPLIER_SIDE_DOCTYPES = (
 	"Purchase Invoice",
-	"Purchase Receipt",
-	"Supplier Quotation",
 )
 
-CUSTOMER_SIDE_DOCTYPES = (
-	"Sales Order",
-	"Quotation",
-	"Delivery Note",
-)
+CUSTOMER_SIDE_DOCTYPES = ()
 
 # Payment Entry is bi-directional (Pay = supplier side, Receive = customer side).
 # Listed separately so party-type logic can branch on it explicitly.
