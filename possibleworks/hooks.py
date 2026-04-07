@@ -34,6 +34,9 @@ doc_events = {
         "on_update": "possibleworks.observer.observer.handle_workflow_event",
         "on_submit": "possibleworks.observer.observer.handle_workflow_event",
         "on_cancel": "possibleworks.observer.observer.handle_workflow_event",
+        "on_trash": "possibleworks.observer.observer.handle_workflow_event",
+        "on_discard": "possibleworks.observer.observer.handle_workflow_event",
+        "after_delete": "possibleworks.observer.observer.handle_workflow_event",
     },
 }
 

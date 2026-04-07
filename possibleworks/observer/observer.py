@@ -95,8 +95,13 @@ class WorkflowEventObserver:
                     )
                     return False
 
-            elif event_type in ("on_submit", "on_cancel"):
-                # These are explicit lifecycle transitions — always fire
+            elif event_type in ("on_submit", "on_cancel", "on_discard"):
+                pass  # Explicit lifecycle — always fire
+
+            elif event_type in ("on_trash", "after_delete"):
+                # Doc is being deleted — always fire regardless of workflow state
+                # Use after_delete as fallback since on_trash can sometimes not fire
+                # for draft docs in certain Frappe versions
                 pass
 
             else:
