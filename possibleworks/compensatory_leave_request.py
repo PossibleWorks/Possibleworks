@@ -17,14 +17,13 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 			super().validate()
 			return
 
-		# Flag checked inside validate_attendance() below
-		self._skip_attendance_validation = not self._submitted_attendance_exists()
+		# Always skip HRMS status-based attendance check when custom validation is enabled
+		self._skip_attendance_validation = True
 
 		super().validate()
 
 		# Only check working hours when attendance records were found
-		# (if skipped, there's nothing to validate against)
-		if not self._skip_attendance_validation:
+		if self._submitted_attendance_exists():
 			self._validate_working_hours(policy)
 
 	# --- override point -------------------------------------------------------
