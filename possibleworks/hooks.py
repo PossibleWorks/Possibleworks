@@ -56,9 +56,19 @@ doc_events = {
 	"Leave Application": {
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
 	},
+    "*": {
+        "after_insert": "possibleworks.observer.observer.handle_workflow_event",
+        "on_update": "possibleworks.observer.observer.handle_workflow_event",
+        "on_submit": "possibleworks.observer.observer.handle_workflow_event",
+        "on_cancel": "possibleworks.observer.observer.handle_workflow_event",
+        "on_trash": "possibleworks.observer.observer.handle_workflow_event",
+        "on_discard": "possibleworks.observer.observer.handle_workflow_event",
+        "after_delete": "possibleworks.observer.observer.handle_workflow_event",
+    },
 }
 
 override_doctype_class = {
+	"Compensatory Leave Request": "possibleworks.compensatory_leave_request.PossibleWorksCompensatoryLeaveRequest",
 	"AI Document Processor Settings": "possibleworks.ap_invoice_processing.doctype.ai_document_processor_settings.ai_document_processor_settings.AIDocumentProcessorSettings",
 	"AI Document Processor Supported DocType": "possibleworks.ap_invoice_processing.doctype.ai_document_processor_supported_doctype.ai_document_processor_supported_doctype.AIDocumentProcessorSupportedDocType",
 	"AI Document Extraction Log": "possibleworks.ap_invoice_processing.doctype.ai_document_extraction_log.ai_document_extraction_log.AIDocumentExtractionLog",
@@ -66,6 +76,17 @@ override_doctype_class = {
 }
 
 
+# ============================================================================
+# Scheduler Events - Batch Processing
+# ============================================================================
+
+scheduler_events = {
+    "cron": {
+        "*/2 * * * *": [
+            "possibleworks.observer.batch_processor.process_event_batch"
+        ]
+    }
+}
 
 # Fixtures: Custom Fields for these doctypes are synced via standard bench.
 # From a site that has the custom fields:
@@ -90,6 +111,8 @@ fixtures = [
             "AI Document Processor Supported DocType",
             "AI Document Extraction Log",
             "AI Document Queue",
+			"Policy Configuration",
+            "Possibleworks Settings"
         ]]],
     },
 ]

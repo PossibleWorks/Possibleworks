@@ -1,0 +1,23 @@
+{
+ "content": null,
+ "creation": "2026-04-06 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-04-06 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Branding",
+ "name": "attendance-details-dashboard",
+ "owner": "Administrator",
+ "page_name": "attendance-details-dashboard",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "HR Manager"},
+  {"role": "HR User"},
+  {"role": "Employee"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "title": "Attendance Details Dashboard"
+}

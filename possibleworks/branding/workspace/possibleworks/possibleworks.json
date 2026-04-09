@@ -1,0 +1,55 @@
+{
+ "app": "possibleworks",
+ "charts": [],
+ "content": "[{\"id\":\"att_dash_link\",\"type\":\"card\",\"data\":{\"card_name\":\"Attendance\",\"col\":12}}]",
+ "creation": "2026-04-06 00:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "calendar",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Possibleworks",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Attendance",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Attendance Details Dashboard",
+   "link_count": 0,
+   "link_to": "attendance-details-dashboard",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-04-06 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Branding",
+ "name": "Possibleworks",
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "restrict_to_domain": "",
+ "roles": [],
+ "sequence_id": 99,
+ "shortcuts": [
+  {
+   "color": "Red",
+   "format": "",
+   "label": "Attendance Details Dashboard",
+   "link_to": "attendance-details-dashboard",
+   "type": "Page"
+  }
+ ],
+ "title": "Possibleworks"
+}
