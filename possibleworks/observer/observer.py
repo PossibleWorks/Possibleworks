@@ -9,6 +9,7 @@ from .settings_helper import SettingsHelper
 from .payload_builder import PayloadBuilder
 from .redis_buffer_service import RedisBufferService
 from .workflow_service import WorkflowService
+from .constants import ALWAYS_OBSERVED_DOCTYPES, SKIP_STATE_CHANGED_CHECK_DOCTYPES
 
 
 class WorkflowEventObserver:
@@ -48,6 +49,9 @@ class WorkflowEventObserver:
         if not SettingsHelper.is_observer_enabled():
             return False
 
+        # Always observe explicitly whitelisted doctypes
+        if doctype in ALWAYS_OBSERVED_DOCTYPES:
+            return True
 
         # Only process doctypes that have an active workflow
         if not WorkflowService.has_workflow(doctype):
@@ -88,12 +92,18 @@ class WorkflowEventObserver:
                     )
                     return False
 
-                if not WorkflowEventObserver._workflow_state_changed(doc, doc_before):
-                    frappe.logger().debug(
-                        f"Observer: Skipping {doc.doctype}/{doc.name} — "
-                        f"workflow state unchanged"
-                    )
-                    return False
+                # For always-observed doctypes (e.g. Employee), fire on any field change —
+                # not just workflow/status transitions, since they are master records.
+                if doc.doctype not in SKIP_STATE_CHANGED_CHECK_DOCTYPES:
+                    if not WorkflowEventObserver._state_changed(doc, doc_before):
+                        frappe.logger().debug(
+                            f"Observer: Skipping {doc.doctype}/{doc.name} — "
+                            f"state unchanged"
+                        )
+                        return False
+                if doc.doctype == "Employee":
+                    # insert before save company email into the event payload
+                    doc.before_save_company_email = doc_before.company_email
 
             elif event_type in ("on_submit", "on_cancel", "on_discard"):
                 pass  # Explicit lifecycle — always fire
@@ -142,33 +152,43 @@ class WorkflowEventObserver:
             return False
 
     @staticmethod
-    def _workflow_state_changed(doc: Any, doc_before: Any) -> bool:
+    def _state_changed(doc: Any, doc_before: Any) -> bool:
         """
-        Compares workflow state between doc_before and current doc.
-        Both are passed explicitly — no internal get_doc_before_save() calls.
+        Checks if a meaningful state transition occurred.
+
+        - If doctype has an active workflow: compares workflow_state field.
+        - Otherwise: falls back to comparing status + docstatus.
         """
         try:
             workflow_name = WorkflowService.get_workflow_name(doc.doctype)
-            if not workflow_name:
-                return False
-    
-            state_field = WorkflowService.get_state_field(workflow_name)
-            if not state_field:
-                return False
-    
-            old_state = getattr(doc_before, state_field, None)
-            new_state = getattr(doc, state_field, None)
-    
+
+            if workflow_name:
+                state_field = WorkflowService.get_state_field(workflow_name)
+                old_state = getattr(doc_before, state_field, None)
+                new_state = getattr(doc, state_field, None)
+                changed = old_state != new_state
+                frappe.logger().info(
+                    f"_state_changed (workflow): {doc.doctype}/{doc.name} "
+                    f"old='{old_state}' new='{new_state}' changed={changed}"
+                )
+                return changed
+
+            # No workflow — fall back to status / docstatus
+            old_status = getattr(doc_before, "status", None)
+            new_status = getattr(doc, "status", None)
+            old_docstatus = getattr(doc_before, "docstatus", None)
+            new_docstatus = getattr(doc, "docstatus", None)
+            changed = (old_status != new_status) or (old_docstatus != new_docstatus)
             frappe.logger().info(
-                f"_workflow_state_changed: {doc.doctype}/{doc.name} "
-                f"old='{old_state}' new='{new_state}' changed={old_state != new_state}"
+                f"_state_changed (fallback): {doc.doctype}/{doc.name} "
+                f"status: '{old_status}'->'{new_status}' "
+                f"docstatus: '{old_docstatus}'->'{new_docstatus}' changed={changed}"
             )
-    
-            return old_state != new_state
-    
+            return changed
+
         except Exception as e:
             frappe.logger().warning(
-                f"_workflow_state_changed error for {doc.doctype}/{doc.name}: {str(e)}"
+                f"_state_changed error for {doc.doctype}/{doc.name}: {str(e)}"
             )
             return False
 

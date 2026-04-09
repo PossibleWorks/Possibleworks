@@ -44,7 +44,7 @@ class BatchProcessor:
         try:
             # Check if webhook is configured
             url = SettingsHelper.get_webhook_url()
-            webhook_url = f"{url}/frappe/workflow-events"
+            webhook_url = f"{url}/frappe-user/workflow-events"
             if not webhook_url:
                 frappe.logger().warning(
                     "BatchProcessor: Webhook URL not configured in settings"
