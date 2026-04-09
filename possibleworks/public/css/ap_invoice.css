@@ -1,0 +1,150 @@
+/* Copyright (c) 2026, Possibleworks and contributors */
+
+/* 
+ * AP Invoice processing styles for extraction popup and buttons 
+ */
+
+.ap-extract-btn {
+    background-color: var(--primary);
+    color: var(--primary-color-text);
+    margin-right: 10px;
+}
+
+.ap-extract-btn:hover {
+    background-color: var(--primary-hover);
+}
+
+.ap-extraction-popup {
+    max-width: 800px;
+}
+
+.ap-confidence-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 8px;
+    text-transform: uppercase;
+}
+
+.ap-conf-high {
+    background-color: var(--bg-green);
+    color: var(--text-on-green);
+}
+
+.ap-conf-medium {
+    background-color: var(--bg-yellow);
+    color: var(--text-on-yellow);
+}
+
+.ap-conf-low {
+    background-color: var(--bg-red);
+    color: var(--text-on-red);
+}
+
+.ap-field-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.ap-field-row:last-child {
+    border-bottom: none;
+}
+
+.ap-field-label {
+    font-weight: 500;
+    width: 40%;
+    color: var(--text-muted);
+}
+
+.ap-field-value {
+    width: 60%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.ap-warning-banner {
+    background-color: var(--bg-red);
+    color: var(--text-on-red);
+    padding: 10px 15px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ap-success-banner {
+    background-color: var(--bg-green);
+    color: var(--text-on-green);
+    padding: 10px 15px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-weight: 500;
+}
+
+.ap-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 20px 0 10px 0;
+    padding-bottom: 5px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.ap-items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.ap-items-table th, .ap-items-table td {
+    border: 1px solid var(--border-color);
+    padding: 8px;
+    text-align: left;
+}
+
+.ap-items-table th {
+    background-color: var(--bg-color);
+    font-weight: 600;
+}
+
+.ap-duplicate-block {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: var(--bg-red);
+    border: 1px solid var(--red-100);
+    border-radius: 8px;
+}
+
+/* Highlight AI-filled item rows where Item Code could not be matched */
+.grid-row.pw-ai-unmatched-row .data-row {
+    background: rgba(231, 76, 60, 0.08);
+    border-left: 4px solid #e74c3c;
+    position: relative;
+}
+
+/* ⚠ badge injected into the row-index cell for unmatched AI rows */
+.pw-select-item-badge {
+    color: #e74c3c;
+    font-size: 11px;
+    margin-left: 3px;
+    cursor: help;
+    font-weight: 700;
+    vertical-align: middle;
+}
+
+.grid-row.pw-ai-unmatched-row:hover .data-row {
+    background: rgba(231, 76, 60, 0.12);
+}
+
+.grid-row.pw-ai-unmatched-row .row-index span,
+.grid-row.pw-ai-unmatched-row .grid-form-row-index {
+    color: #e74c3c;
+    font-weight: 700;
+}
