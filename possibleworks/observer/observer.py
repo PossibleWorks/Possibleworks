@@ -9,7 +9,7 @@ from .settings_helper import SettingsHelper
 from .payload_builder import PayloadBuilder
 from .redis_buffer_service import RedisBufferService
 from .workflow_service import WorkflowService
-from .constants import ALWAYS_OBSERVED_DOCTYPES
+from .constants import ALWAYS_OBSERVED_DOCTYPES, SKIP_STATE_CHANGED_CHECK_DOCTYPES
 
 
 class WorkflowEventObserver:
@@ -94,13 +94,16 @@ class WorkflowEventObserver:
 
                 # For always-observed doctypes (e.g. Employee), fire on any field change —
                 # not just workflow/status transitions, since they are master records.
-                if doc.doctype not in ALWAYS_OBSERVED_DOCTYPES:
+                if doc.doctype not in SKIP_STATE_CHANGED_CHECK_DOCTYPES:
                     if not WorkflowEventObserver._state_changed(doc, doc_before):
                         frappe.logger().debug(
                             f"Observer: Skipping {doc.doctype}/{doc.name} — "
                             f"state unchanged"
                         )
                         return False
+                if doc.doctype == "Employee":
+                    # insert before save company email into the event payload
+                    doc.before_save_company_email = doc_before.company_email
 
             elif event_type in ("on_submit", "on_cancel", "on_discard"):
                 pass  # Explicit lifecycle — always fire

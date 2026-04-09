@@ -9,6 +9,10 @@ ALWAYS_OBSERVED_DOCTYPES = [
     "Employee",
 ]
 
+SKIP_STATE_CHANGED_CHECK_DOCTYPES = [
+    "Employee",
+]
+
 
 # Redis configuration
 REDIS_PREFIX = "possibleworks:event"
