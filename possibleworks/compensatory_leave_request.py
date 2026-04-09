@@ -14,7 +14,18 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 		policy = frappe.get_single("Policy Configuration")
 
 		if not policy.enable_custom_comp_off_validation:
-			super().validate()
+			try:
+				super().validate()
+			except frappe.ValidationError as e:
+				msg = str(e)
+				if "A Compensatory Leave Request exists between" in msg:
+					frappe.message_log.pop()
+					frappe.throw(
+						_("Compensatory leave request already exists on {0}.").format(
+							frappe.bold(frappe.format(self.work_from_date, {"fieldtype": "Date"}))
+						)
+					)
+				raise
 			return
 
 		# Always skip HRMS status-based attendance check when custom validation is enabled
@@ -26,13 +37,49 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 		if self._submitted_attendance_exists():
 			self._validate_working_hours(policy)
 
-	# --- override point -------------------------------------------------------
+	# --- override points ------------------------------------------------------
 
 	def validate_attendance(self):
-		"""Skip HRMS attendance check when no submitted attendance exists."""
 		if getattr(self, "_skip_attendance_validation", False):
 			return
-		super().validate_attendance()
+		try:
+			super().validate_attendance()
+		except frappe.ValidationError as e:
+			msg = str(e)
+			if "only present for Half Day" in msg:
+				frappe.message_log.pop()
+				frappe.throw(
+					_("You cannot apply full day compensatory leave request because attendance is marked as Half Day.")
+				)
+			elif "not present all day" in msg:
+				frappe.message_log.pop()
+				frappe.throw(
+					_("Compensatory leave request is not applicable for the selected date(s) due to no attendance record.")
+				)
+			raise
+
+	def validate_holidays(self):
+		try:
+			super().validate_holidays()
+		except frappe.ValidationError as e:
+			msg = str(e)
+			if "not a holiday" in msg or "not valid holidays" in msg:
+				from frappe.utils import date_diff
+				frappe.message_log.pop()
+				if date_diff(self.work_end_date, self.work_from_date):
+					frappe.throw(
+						_("You cannot apply for compensatory leave request as {0} to {1} are not holidays").format(
+							frappe.bold(frappe.format(self.work_from_date, {"fieldtype": "Date"})),
+							frappe.bold(frappe.format(self.work_end_date, {"fieldtype": "Date"})),
+						)
+					)
+				else:
+					frappe.throw(
+						_("You cannot apply for compensatory leave request as {0} is not a holiday").format(
+							frappe.bold(frappe.format(self.work_from_date, {"fieldtype": "Date"}))
+						)
+					)
+			raise
 
 	# --- helpers --------------------------------------------------------------
 
