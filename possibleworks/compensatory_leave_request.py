@@ -14,10 +14,14 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 		policy = frappe.get_single("Policy Configuration")
 
 		if not policy.enable_custom_comp_off_validation:
+			# Run standard HRMS validation but intercept specific error messages
+			# and replace them with user-friendly custom messages.
+			# This avoids editing HRMS source code directly.
 			try:
 				super().validate()
 			except frappe.ValidationError as e:
 				msg = str(e)
+				# HRMS overlap error → custom message
 				if "A Compensatory Leave Request exists between" in msg:
 					frappe.message_log.pop()
 					frappe.throw(
@@ -38,6 +42,10 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 			self._validate_working_hours(policy)
 
 	# --- override points ------------------------------------------------------
+	# The methods below override HRMS methods solely to customize error messages.
+	# The original HRMS logic is preserved by calling super() — only the thrown
+	# message is replaced. frappe.message_log.pop() removes the original HRMS
+	# message before raising ours so both don't appear together.
 
 	def validate_attendance(self):
 		if getattr(self, "_skip_attendance_validation", False):
@@ -46,11 +54,13 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 			super().validate_attendance()
 		except frappe.ValidationError as e:
 			msg = str(e)
+			# HRMS: "You were only present for Half Day..." → custom message
 			if "only present for Half Day" in msg:
 				frappe.message_log.pop()
 				frappe.throw(
 					_("You cannot apply full day compensatory leave request because attendance is marked as Half Day.")
 				)
+			# HRMS: "You are not present all day(s)..." → custom message
 			elif "not present all day" in msg:
 				frappe.message_log.pop()
 				frappe.throw(
@@ -63,6 +73,7 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 			super().validate_holidays()
 		except frappe.ValidationError as e:
 			msg = str(e)
+			# HRMS: "is not a holiday" / "not valid holidays" → custom message
 			if "not a holiday" in msg or "not valid holidays" in msg:
 				from frappe.utils import date_diff
 				frappe.message_log.pop()
