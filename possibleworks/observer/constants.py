@@ -5,7 +5,8 @@
 ALWAYS_OBSERVED_DOCTYPES = [
     "Leave Application",
     "Attendance Request",
-    "Compensatory Leave Request"
+    "Compensatory Leave Request",
+    "Employee",
 ]
 
 

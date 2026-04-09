@@ -92,12 +92,15 @@ class WorkflowEventObserver:
                     )
                     return False
 
-                if not WorkflowEventObserver._state_changed(doc, doc_before):
-                    frappe.logger().debug(
-                        f"Observer: Skipping {doc.doctype}/{doc.name} — "
-                        f"state unchanged"
-                    )
-                    return False
+                # For always-observed doctypes (e.g. Employee), fire on any field change —
+                # not just workflow/status transitions, since they are master records.
+                if doc.doctype not in ALWAYS_OBSERVED_DOCTYPES:
+                    if not WorkflowEventObserver._state_changed(doc, doc_before):
+                        frappe.logger().debug(
+                            f"Observer: Skipping {doc.doctype}/{doc.name} — "
+                            f"state unchanged"
+                        )
+                        return False
 
             elif event_type in ("on_submit", "on_cancel", "on_discard"):
                 pass  # Explicit lifecycle — always fire
