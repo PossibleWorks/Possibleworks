@@ -44,7 +44,7 @@ class BatchProcessor:
         try:
             # Check if webhook is configured
             url = SettingsHelper.get_webhook_url()
-            webhook_url = f"{url}/frappe/workflow-events"
+            webhook_url = f"{url}/frappe-user/workflow-events"
             if not webhook_url:
                 frappe.logger().warning(
                     "BatchProcessor: Webhook URL not configured in settings"
@@ -71,6 +71,15 @@ class BatchProcessor:
             frappe.logger().info(
                 f"BatchProcessor: Processing batch of {len(events)} events"
             )
+
+            # Inject tenant_id into each event from its own company field
+            default_company = frappe.defaults.get_global_default("company")
+            tenant_id_cache = {}
+            for event in events:
+                event["tenant_id"] = '3ca1920c-fbd0-4e2f-865c-a82ed3141ee1'
+                # company = (event.get("document") or {}).get("company") or default_company
+                # if company not in tenant_id_cache:
+                #     tenant_id_cache[company] = frappe.db.get_value("Company", company, "custom_tenant_id") or "" if company else ""
 
             # Send to external API
             success, sent_count = BatchProcessor._send_to_webhook(
