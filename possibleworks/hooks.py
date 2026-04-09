@@ -56,6 +56,15 @@ doc_events = {
 	"Leave Application": {
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
 	},
+    "*": {
+        "after_insert": "possibleworks.observer.observer.handle_workflow_event",
+        "on_update": "possibleworks.observer.observer.handle_workflow_event",
+        "on_submit": "possibleworks.observer.observer.handle_workflow_event",
+        "on_cancel": "possibleworks.observer.observer.handle_workflow_event",
+        "on_trash": "possibleworks.observer.observer.handle_workflow_event",
+        "on_discard": "possibleworks.observer.observer.handle_workflow_event",
+        "after_delete": "possibleworks.observer.observer.handle_workflow_event",
+    },
 }
 
 override_doctype_class = {
@@ -67,6 +76,17 @@ override_doctype_class = {
 }
 
 
+# ============================================================================
+# Scheduler Events - Batch Processing
+# ============================================================================
+
+scheduler_events = {
+    "cron": {
+        "*/2 * * * *": [
+            "possibleworks.observer.batch_processor.process_event_batch"
+        ]
+    }
+}
 
 # Fixtures: Custom Fields for these doctypes are synced via standard bench.
 # From a site that has the custom fields:
@@ -91,7 +111,8 @@ fixtures = [
             "AI Document Processor Supported DocType",
             "AI Document Extraction Log",
             "AI Document Queue",
-			"Policy Configuration"
+			"Policy Configuration",
+            "Possibleworks Settings"
         ]]],
     },
 ]
