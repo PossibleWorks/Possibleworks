@@ -38,7 +38,7 @@ class PayloadBuilder:
     """
 
     @staticmethod
-    def build_payload(doc: Any, event_type: str) -> Optional[Dict]:
+    def build_payload(doc: Any, event_type: str, extra_fields: Dict = None) -> Optional[Dict]:
         """
         Build a complete event payload.
 
@@ -62,6 +62,10 @@ class PayloadBuilder:
                 )
                 return None
 
+            doc_dict = doc.as_dict()
+            if extra_fields:
+                doc_dict.update(extra_fields)
+
             payload = {
                 "timestamp": PayloadBuilder._get_timestamp(),
                 "event_type": event_type,
@@ -69,7 +73,7 @@ class PayloadBuilder:
                 "company": company,
                 "user": frappe.session.user,
                 "client": PayloadBuilder._build_client_info(),
-                "document": doc.as_dict(),
+                "document": doc_dict,
                 "workflow": PayloadBuilder._build_workflow_info(doc),
             }
 
