@@ -101,9 +101,6 @@ class WorkflowEventObserver:
                             f"state unchanged"
                         )
                         return False
-                if doc.doctype == "Employee":
-                    # insert before save company email into the event payload
-                    doc.before_save_company_email = doc_before.company_email
 
             elif event_type in ("on_submit", "on_cancel", "on_discard"):
                 pass  # Explicit lifecycle — always fire
@@ -123,7 +120,12 @@ class WorkflowEventObserver:
             )
 
             # Build the payload
-            payload = PayloadBuilder.build_payload(doc, event_type)
+            extra_fields = None
+            if doc.doctype == "Employee" and event_type == "on_update":
+                doc_before = doc.get_doc_before_save()
+                if doc_before:
+                    extra_fields = {"before_save_company_email": doc_before.company_email}
+            payload = PayloadBuilder.build_payload(doc, event_type, extra_fields=extra_fields)
             
             if not payload:
                 frappe.logger().warning(
