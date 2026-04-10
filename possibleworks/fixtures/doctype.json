@@ -353,7 +353,7 @@
         "collapsible": 0,
         "collapsible_depends_on": null,
         "columns": 0,
-        "default": "1",
+        "default": "0",
         "depends_on": null,
         "description": null,
         "documentation_url": null,
