@@ -235,7 +235,10 @@ def get_leave_periods_for_dates(employee, dates):
 
 @frappe.whitelist()
 def submit_leave_application(employee, employee_name, from_date, to_date, leave_type, description=""):
-	"""Create and auto-approve a Leave Application."""
+	"""Create and submit a Leave Application, respecting workflow if enabled."""
+	from frappe.model.workflow import apply_workflow
+	from possibleworks.observer.workflow_service import WorkflowService
+
 	# Resolve a valid leave approver for this employee
 	leave_approver = frappe.db.get_value("Employee", employee, "leave_approver")
 	if not leave_approver:
@@ -248,19 +251,48 @@ def submit_leave_application(employee, employee_name, from_date, to_date, leave_
 			)
 	leave_approver = leave_approver or frappe.session.user
 
-	doc = frappe.get_doc({
-		"doctype": "Leave Application",
-		"employee": employee,
-		"employee_name": employee_name,
-		"from_date": from_date,
-		"to_date": to_date,
-		"leave_type": leave_type,
-		"description": description,
-		"status": "Approved",
-		"leave_approver": leave_approver,
-	})
-	doc.insert(ignore_permissions=True)
-	doc.submit()
+	workflow_name = WorkflowService.get_workflow_name("Leave Application")
+
+	if workflow_name:
+		# Workflow is enabled: insert without forcing status, then apply first transition
+		doc = frappe.get_doc({
+			"doctype": "Leave Application",
+			"employee": employee,
+			"employee_name": employee_name,
+			"from_date": from_date,
+			"to_date": to_date,
+			"leave_type": leave_type,
+			"description": description,
+			"leave_approver": leave_approver,
+		})
+		doc.insert(ignore_permissions=True)
+
+		state_field = WorkflowService.get_state_field(workflow_name)
+		current_state = getattr(doc, state_field, None)
+		transitions = WorkflowService.get_transitions(
+			workflow_name=workflow_name,
+			current_state=current_state,
+			doctype="Leave Application",
+			doc_name=doc.name,
+		)
+		if transitions:
+			apply_workflow(doc, transitions[0]["action"])
+	else:
+		# No workflow: default behaviour
+		doc = frappe.get_doc({
+			"doctype": "Leave Application",
+			"employee": employee,
+			"employee_name": employee_name,
+			"from_date": from_date,
+			"to_date": to_date,
+			"leave_type": leave_type,
+			"description": description,
+			"status": "Approved",
+			"leave_approver": leave_approver,
+		})
+		doc.insert(ignore_permissions=True)
+		doc.submit()
+
 	return doc.name
 
 
@@ -268,9 +300,13 @@ def submit_leave_application(employee, employee_name, from_date, to_date, leave_
 def approve_pending_leaves(employee, dates):
 	"""Approve Open Leave Applications whose date range covers the given dates."""
 	import json
+	from frappe.model.workflow import apply_workflow
+	from possibleworks.observer.workflow_service import WorkflowService
+
 	if isinstance(dates, str):
 		dates = json.loads(dates)
 
+	workflow_name = WorkflowService.get_workflow_name("Leave Application")
 	approved = 0
 	for dt in dates:
 		apps = frappe.get_list(
@@ -286,10 +322,22 @@ def approve_pending_leaves(employee, dates):
 		)
 		for app in apps:
 			doc = frappe.get_doc("Leave Application", app.name)
-			doc.status = "Approved"
-			doc.leave_approver = frappe.session.user
-			doc.save(ignore_permissions=True)
-			doc.submit()
+			if workflow_name:
+				state_field = WorkflowService.get_state_field(workflow_name)
+				current_state = getattr(doc, state_field, None)
+				transitions = WorkflowService.get_transitions(
+					workflow_name=workflow_name,
+					current_state=current_state,
+					doctype="Leave Application",
+					doc_name=doc.name,
+				)
+				if transitions:
+					apply_workflow(doc, transitions[0]["action"])
+			else:
+				doc.status = "Approved"
+				doc.leave_approver = frappe.session.user
+				doc.save(ignore_permissions=True)
+				doc.submit()
 			approved += 1
 	return {"approved": approved}
 
