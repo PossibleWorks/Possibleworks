@@ -1,6 +1,18 @@
 # Frappe/ERPNext system doctypes that should be ignored by observer
 # These are internal system events that create massive noise
 
+# Doctypes that are always observed regardless of active workflow
+ALWAYS_OBSERVED_DOCTYPES = [
+    "Leave Application",
+    "Attendance Request",
+    "Compensatory Leave Request",
+    "Employee",
+]
+
+SKIP_STATE_CHANGED_CHECK_DOCTYPES = [
+    "Employee",
+]
+
 
 # Redis configuration
 REDIS_PREFIX = "possibleworks:event"

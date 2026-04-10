@@ -2,6 +2,58 @@
 import frappe
 
 
+def seed_ai_settings():
+	"""
+	Keep AI Document Processor Settings.supported_doctypes aligned with the
+	current rollout.
+
+	Runs after every bench migrate so fresh sites get the default rows and
+	existing sites are pruned when the rollout scope changes.
+	"""
+	from possibleworks.ap_invoice_processing.constants import ROLLOUT_DOCTYPES, SETTINGS_DOCTYPE
+
+	try:
+		if not frappe.db.exists("DocType", SETTINGS_DOCTYPE):
+			return
+
+		settings = frappe.get_single(SETTINGS_DOCTYPE)
+		existing_enabled = {}
+		for row in list(settings.supported_doctypes or []):
+			dt = (row.document_type or "").strip()
+			if not dt:
+				continue
+			existing_enabled[dt] = 1 if row.enabled else 0
+
+		desired_rows = [
+			{"document_type": dt, "enabled": existing_enabled.get(dt, 1)}
+			for dt in ROLLOUT_DOCTYPES
+		]
+		current_rows = [
+			{
+				"document_type": (row.document_type or "").strip(),
+				"enabled": 1 if row.enabled else 0,
+			}
+			for row in list(settings.supported_doctypes or [])
+			if (row.document_type or "").strip()
+		]
+
+		if current_rows == desired_rows:
+			return
+
+		settings.set("supported_doctypes", [])
+		for row in desired_rows:
+			settings.append("supported_doctypes", row)
+
+		settings.flags.ignore_mandatory = True
+		settings.save(ignore_permissions=True)
+		frappe.db.commit()
+	except Exception as e:
+		frappe.log_error(
+			title="Possibleworks: AI Settings seed failed",
+			message=str(e),
+		)
+
+
 def set_default_branding():
 	"""Set System Settings and Website Settings for Possibleworks branding."""
 

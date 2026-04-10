@@ -1,1 +1,4 @@
-# No patches
+[pre_model_sync]
+
+[post_model_sync]
+possibleworks.patches.v1_1.seed_ai_document_processor_supported_doctypes

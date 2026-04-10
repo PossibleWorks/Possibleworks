@@ -41,18 +41,32 @@ class PayloadBuilder:
     def build_payload(doc: Any, event_type: str) -> Optional[Dict]:
         """
         Build a complete event payload.
-        
-        Args:
-            doc: Frappe document object
-            event_type: Event type (after_insert, on_update, etc.)
-            
-        Returns:
-            Dictionary payload or None if payload building failed
+
+        Returns None (and logs a warning) if company or tenant_id cannot be resolved,
+        which causes the observer to skip queuing the event entirely.
         """
         try:
+            company = PayloadBuilder._resolve_company(doc)
+            if not company:
+                frappe.logger().warning(
+                    f"PayloadBuilder: Skipping — could not resolve company. "
+                    f"doctype={doc.doctype} name={doc.name} event_type={event_type}"
+                )
+                return None
+
+            tenant_id = frappe.db.get_value("Company", company, "custom_tenant_id") or ""
+            if not tenant_id:
+                frappe.logger().warning(
+                    f"PayloadBuilder: Skipping — company '{company}' has no custom_tenant_id. "
+                    f"doctype={doc.doctype} name={doc.name}"
+                )
+                return None
+
             payload = {
                 "timestamp": PayloadBuilder._get_timestamp(),
                 "event_type": event_type,
+                "tenant_id": tenant_id,
+                "company": company,
                 "user": frappe.session.user,
                 "client": PayloadBuilder._build_client_info(),
                 "document": doc.as_dict(),
@@ -66,6 +80,42 @@ class PayloadBuilder:
                 f"PayloadBuilder: Error building payload for {doc.doctype}/{doc.name}: {str(e)}"
             )
             return None
+
+    @staticmethod
+    def _resolve_company(doc: Any) -> Optional[str]:
+        """
+        Resolve company from a live Frappe document using a fallback chain.
+
+          1. doc.company          — direct field (most HR doctypes)
+          2. doc.employee         — Employee Checkin and similar
+          3. User doctype         — find linked Employee by user_id
+          4. doc.department       — last resort
+
+        Returns company name, or None if unresolvable.
+        """
+        # 1. Direct field
+        if getattr(doc, "company", None):
+            return doc.company
+
+        # 2. Via employee link (e.g. Employee Checkin)
+        if getattr(doc, "employee", None):
+            company = frappe.db.get_value("Employee", doc.employee, "company")
+            if company:
+                return company
+
+        # 3. User doctype — find company via linked Employee record
+        if doc.doctype == "User":
+            company = frappe.db.get_value("Employee", {"user_id": doc.name}, "company")
+            if company:
+                return company
+
+        # 4. Via department link
+        if getattr(doc, "department", None):
+            company = frappe.db.get_value("Department", doc.department, "company")
+            if company:
+                return company
+
+        return None
 
     @staticmethod
     def _get_timestamp() -> str:
