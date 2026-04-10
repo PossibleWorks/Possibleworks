@@ -258,7 +258,7 @@ function _mountDashboard(mount) {
 	}
 
 	/* ── employee detail component ── */
-	function EmployeeDetail({ emp, records, lpCount, apCount, lpEntries, apEntries, onBack, onRefresh }) {
+	function EmployeeDetail({ emp, records, lpCount, apCount, lpEntries, apEntries, onBack, onRefresh, date, toDate, empHolidays }) {
 
 		const [selectedDates, setSelectedDates] = useState({});
 		const [selectedApproveDates, setSelectedApproveDates] = useState({});
@@ -267,14 +267,16 @@ function _mountDashboard(mount) {
 
 		/* Pre-fetch leave types + balances on mount so Apply Leave opens instantly */
 		useEffect(() => {
-			frappe.call({ method:"frappe.client.get_list", args:{ doctype:"Leave Type", fields:["name"], limit:50 },
-				callback: r => { setLeaveTypes((r.message||[]).map(l=>l.name)); }
-			});
 			frappe.call({ method:"possibleworks.branding.page.attendance_details_dashboard.attendance_details_dashboard.get_leave_balances",
-				args:{ employee: emp.id },
-				callback: r => { setLeaveBalances(r.message || []); }
+				args:{ employee: emp.id, date: date },
+				callback: r => {
+					const balances = r.message || [];
+					setLeaveBalances(balances);
+					/* derive leave types from the employee's own allocations only */
+					setLeaveTypes(balances.map(b => b.leave_type));
+				}
 			});
-		}, [emp.id]);
+		}, [emp.id, date]);
 
 		const toggleDate = (date) => {
 			setSelectedDates(prev => {
@@ -360,107 +362,198 @@ function _mountDashboard(mount) {
 		const openLeaveModal = () => {
 			const selDates = Object.keys(selectedDates).sort();
 			if (!selDates.length) { frappe.msgprint("Please select at least one date from the table"); return; }
-			const balHtml = leaveBalances.length
-				? "<table style='width:100%;border-collapse:collapse;margin-bottom:8px;font-size:13px'>"
-				  + "<tr style='background:#f9fafb'>"
-				  + "<th style='text-align:left;padding:6px 10px;border-bottom:1px solid #e5e7eb'>Leave Type</th>"
-				  + "<th style='text-align:right;padding:6px 10px;border-bottom:1px solid #e5e7eb'>Allocated</th>"
-				  + "<th style='text-align:right;padding:6px 10px;border-bottom:1px solid #e5e7eb'>Taken</th>"
-				  + "<th style='text-align:right;padding:6px 10px;border-bottom:1px solid #e5e7eb'>Balance</th>"
-				  + "</tr>"
-				  + leaveBalances.map(b => {
-				      const bal = parseFloat(b.balance) || 0;
-				      const balColor = bal <= 0 ? "#dc2626" : "#16a34a";
-				      return "<tr>"
-				        + "<td style='padding:6px 10px;border-bottom:1px solid #f3f4f6'>" + b.leave_type + "</td>"
-				        + "<td style='text-align:right;padding:6px 10px;border-bottom:1px solid #f3f4f6'>" + (b.allocated || 0) + "</td>"
-				        + "<td style='text-align:right;padding:6px 10px;border-bottom:1px solid #f3f4f6'>" + (b.taken || 0) + "</td>"
-				        + "<td style='text-align:right;padding:6px 10px;border-bottom:1px solid #f3f4f6;font-weight:700;color:" + balColor + "'>" + bal + "</td>"
-				        + "</tr>";
-				    }).join("")
-				  + "</table>"
-				: "<p style='color:#9ca3af;font-size:13px'>No active leave allocations found for this employee</p>";
-			const dateCheckboxes = selDates.map(dt =>
-				"<label style='display:inline-flex;align-items:center;gap:6px;padding:4px 10px;font-size:12px;cursor:pointer;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin:3px'>"
-				+ "<input type='checkbox' checked data-date='" + dt + "' style='width:14px;height:14px;accent-color:#4f46e5;cursor:pointer'/>"
-				+ "<span style='font-family:Space Mono,monospace'>" + dt + "</span></label>"
-			).join("");
-			/* build balance lookup */
-			const balMap = {};
-			leaveBalances.forEach(b => { balMap[b.leave_type] = parseFloat(b.balance) || 0; });
-			const updateValidation = (dlg) => {
-				const lt = dlg.get_value("leave_type");
-				const el = dlg.$wrapper.find(".leave-validation-msg");
-				if (!lt) { el.html(""); dlg.disable_primary_action(); return; }
-				let checkedCount = 0;
-				dlg.$wrapper.find("input[data-date]").each(function() { if (this.checked) checkedCount++; });
-				if (!checkedCount) { el.html(""); dlg.disable_primary_action(); return; }
-				const bal = balMap[lt];
-				if (bal === undefined) {
-					el.html("<div style='padding:8px 12px;background:#fef3c7;color:#92400e;border-radius:6px;font-size:13px;margin-top:8px'>No allocation found for <b>" + lt + "</b></div>");
-					dlg.disable_primary_action();
-				} else if (checkedCount > bal) {
-					el.html("<div style='padding:8px 12px;background:#fee2e2;color:#991b1b;border-radius:6px;font-size:13px;margin-top:8px'>Selected <b>" + checkedCount + " day(s)</b> but only <b>" + bal + "</b> " + lt + " balance available. Please uncheck some dates.</div>");
-					dlg.disable_primary_action();
-				} else {
-					el.html("<div style='padding:8px 12px;background:#dcfce7;color:#166534;border-radius:6px;font-size:13px;margin-top:8px'>" + lt + ": <b>" + checkedCount + "</b> of <b>" + bal + "</b> days will be used</div>");
-					dlg.enable_primary_action();
-				}
-			};
-			const d = new frappe.ui.Dialog({
-				title: "Apply Leave - " + emp.name,
-				fields: [
-					{ fieldtype:"HTML", fieldname:"bal_html", options: "<div style='margin-bottom:12px'><div style='font-weight:700;font-size:13px;margin-bottom:6px'>Leave Balances</div>" + balHtml + "</div>" },
-					{ fieldtype:"HTML", fieldname:"dates_html", options: "<div style='margin-bottom:12px'><div style='font-weight:700;font-size:13px;margin-bottom:6px'>Select Dates (" + selDates.length + ")</div><div style='display:flex;flex-wrap:wrap'>" + dateCheckboxes + "</div></div>" },
-					{ fieldtype:"Select", fieldname:"leave_type", label:"Leave Type", options:leaveTypes.join("\n"), reqd:1, change: function() { updateValidation(d); } },
-					{ fieldtype:"HTML", fieldname:"validation_msg", options: "<div class='leave-validation-msg'></div>" },
-					{ fieldtype:"Small Text", fieldname:"reason", label:"Reason" },
-				],
-				size: "large",
-				primary_action_label: "Submit Leave",
-				primary_action(vals) {
-					const checked = [];
-					d.$wrapper.find("input[data-date]").each(function() {
-						if (this.checked) checked.push(this.getAttribute("data-date"));
-					});
-					if (!checked.length) { frappe.msgprint("Please select at least one date"); return; }
-					/* validate leave balance */
-					const selectedType = vals.leave_type;
-					const available = balMap[selectedType];
-					if (available !== undefined && checked.length > available) {
-						frappe.msgprint({
-							title: "Insufficient Leave Balance",
-							message: "You selected <b>" + checked.length + " day(s)</b> but only have <b>" + available + "</b> " + selectedType + " balance remaining. Please uncheck some dates or choose a different leave type.",
-							indicator: "red"
+
+			/* fetch which allocation period each selected date belongs to */
+			frappe.call({
+				method: "possibleworks.branding.page.attendance_details_dashboard.attendance_details_dashboard.get_leave_periods_for_dates",
+				args: { employee: emp.id, dates: JSON.stringify(selDates) },
+				callback(r) {
+					const periods = r.message || [];
+					const isMultiPeriod = periods.length > 1;
+
+					/* map date -> period for fast lookup */
+					const dateperiodMap = {};
+					periods.forEach(p => { (p.dates || []).forEach(d => { dateperiodMap[d] = p; }); });
+
+					/* build balance summary html — show each period separately if multi-period */
+					const buildBalHtml = () => {
+						if (!periods.length) return "<p style='color:#9ca3af;font-size:13px'>No active leave allocations found for this employee</p>";
+						let html = "";
+						periods.forEach(p => {
+							if (isMultiPeriod) {
+								const label = p.has_allocation
+									? "Period: " + p.from_date + " → " + p.to_date + " (" + p.dates.length + " date" + (p.dates.length > 1 ? "s" : "") + ")"
+									: "No allocation (" + p.dates.join(", ") + ")";
+								html += "<div style='font-size:11px;font-weight:700;color:#6366f1;margin:6px 0 2px;font-family:Space Mono,monospace'>" + label + "</div>";
+							}
+							if (!p.has_allocation) {
+								html += "<div style='padding:6px 10px;background:#fee2e2;color:#991b1b;border-radius:6px;font-size:12px;margin-bottom:6px'>No leave allocation for these dates</div>";
+								return;
+							}
+							const rows = Object.entries(p.balances || {}).map(([lt, bal]) => {
+								const b = parseFloat(bal) || 0;
+								const c = b <= 0 ? "#dc2626" : "#16a34a";
+								return "<tr>"
+									+ "<td style='padding:5px 10px;border-bottom:1px solid #f3f4f6'>" + lt + "</td>"
+									+ "<td style='text-align:right;padding:5px 10px;border-bottom:1px solid #f3f4f6;font-weight:700;color:" + c + "'>" + b + "</td>"
+									+ "</tr>";
+							}).join("");
+							html += "<table style='width:100%;border-collapse:collapse;margin-bottom:8px;font-size:12px'>"
+								+ "<tr style='background:#f9fafb'>"
+								+ "<th style='text-align:left;padding:5px 10px;border-bottom:1px solid #e5e7eb'>Leave Type</th>"
+								+ "<th style='text-align:right;padding:5px 10px;border-bottom:1px solid #e5e7eb'>Balance</th>"
+								+ "</tr>" + rows + "</table>";
 						});
-						return;
-					}
-					d.disable_primary_action();
-					let submitted = 0; let failed = 0; const total = checked.length;
-					const submitNext = (idx) => {
-						if (idx >= total) {
-							d.hide();
-							setSelectedDates({});
-							if (failed) frappe.show_alert({ message: submitted + " of " + total + " leave applications submitted (" + failed + " failed)", indicator:"orange" });
-							else frappe.show_alert({ message: total + " leave application(s) submitted", indicator:"green" });
-							if (onRefresh) onRefresh();
+						return html;
+					};
+
+					/* date checkboxes — tag each with its period label for multi-period */
+					const dateCheckboxes = selDates.map(dt => {
+						const p = dateperiodMap[dt];
+						const tag = (isMultiPeriod && p && p.has_allocation)
+							? "<span style='font-size:10px;color:#6366f1;margin-left:4px'>[" + (p.from_date || "?").slice(0,7) + "]</span>"
+							: "";
+						const noAlloc = p && !p.has_allocation;
+						return "<label style='display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;cursor:pointer;"
+							+ "background:" + (noAlloc ? "#fee2e2" : "#f8fafc") + ";border:1px solid "
+							+ (noAlloc ? "#fca5a5" : "#e2e8f0") + ";border-radius:6px;margin:3px'>"
+							+ "<input type='checkbox' " + (noAlloc ? "" : "checked") + " data-date='" + dt + "' style='width:14px;height:14px;accent-color:#4f46e5;cursor:pointer'/>"
+							+ "<span style='font-family:Space Mono,monospace'>" + dt + "</span>" + tag + "</label>";
+					}).join("");
+
+					/* helper: single-period balance table */
+					const buildSinglePeriodBalHtml = (p) => {
+						if (!p || !p.has_allocation) return "";
+						const rows = Object.entries(p.balances || {}).map(([lt, bal]) => {
+							const b = parseFloat(bal) || 0;
+							const c = b <= 0 ? "#dc2626" : "#16a34a";
+							return "<tr><td style='padding:5px 10px;border-bottom:1px solid #f3f4f6'>" + lt + "</td>"
+								+ "<td style='text-align:right;padding:5px 10px;border-bottom:1px solid #f3f4f6;font-weight:700;color:" + c + "'>" + b + "</td></tr>";
+						}).join("");
+						return "<div style='font-weight:700;font-size:13px;margin-bottom:6px'>Leave Balances</div>"
+							+ "<table style='width:100%;border-collapse:collapse;margin-bottom:8px;font-size:12px'>"
+							+ "<tr style='background:#f9fafb'><th style='text-align:left;padding:5px 10px;border-bottom:1px solid #e5e7eb'>Leave Type</th>"
+							+ "<th style='text-align:right;padding:5px 10px;border-bottom:1px solid #e5e7eb'>Balance</th></tr>"
+							+ rows + "</table>";
+					};
+
+					/* period-aware validation — dynamically updates warning and balance section */
+					const updateValidation = (dlg) => {
+						const lt = dlg.get_value("leave_type");
+						const el = dlg.$wrapper.find(".leave-validation-msg");
+						const warnEl = dlg.$wrapper.find(".leave-period-warning");
+						const balEl = dlg.$wrapper.find(".leave-balance-section");
+
+						const checkedDates = [];
+						dlg.$wrapper.find("input[data-date]").each(function() {
+							if (this.checked) checkedDates.push(this.getAttribute("data-date"));
+						});
+						if (!checkedDates.length) { el.html(""); warnEl.hide(); balEl.html(""); dlg.disable_primary_action(); return; }
+
+						const groups = {};
+						checkedDates.forEach(d => {
+							const p = dateperiodMap[d];
+							const key = (p && p.has_allocation) ? (p.from_date + "|" + p.to_date) : "__no_alloc__";
+							if (!groups[key]) groups[key] = { period: p, dates: [] };
+							groups[key].dates.push(d);
+						});
+						const groupList = Object.values(groups);
+
+						/* multi-period: show warning, clear balance table, block submit */
+						if (groupList.length > 1) {
+							const periodLabels = groupList
+								.filter(g => g.period && g.period.has_allocation)
+								.map(g => "<b>" + g.period.from_date + " \u2192 " + g.period.to_date + "</b> (" + g.dates.length + " date" + (g.dates.length > 1 ? "s" : "") + ")");
+							warnEl.show();
+							balEl.html("");
+							el.html("<div style='padding:10px 14px;background:#fee2e2;color:#991b1b;border-radius:8px;font-size:13px;border:1px solid #fca5a5'>"
+								+ "<div style='font-weight:700;margin-bottom:4px'>Cannot apply leave across two leave periods</div>"
+								+ "Selected dates belong to: " + periodLabels.join(" and ") + ".<br>"
+								+ "Please <b>uncheck dates from one period</b> and submit separately.</div>");
+							dlg.disable_primary_action();
 							return;
 						}
-						frappe.call({
-							method:"possibleworks.branding.page.attendance_details_dashboard.attendance_details_dashboard.submit_leave_application",
-							args:{ employee:emp.id, employee_name:emp.name,
-								from_date:checked[idx], to_date:checked[idx],
-								leave_type:vals.leave_type, description:vals.reason||"" },
-							callback: () => { submitted++; submitNext(idx+1); },
-							error: () => { failed++; submitNext(idx+1); }
-						});
+
+						/* single period — hide warning, show balance for this period */
+						warnEl.hide();
+						const g = groupList[0];
+						balEl.html(g && g.period ? buildSinglePeriodBalHtml(g.period) : "");
+
+						if (!lt) { el.html(""); dlg.disable_primary_action(); return; }
+
+						let html = "";
+						let canSubmit = true;
+						if (!g || !g.period || !g.period.has_allocation) {
+							html = "<div style='padding:7px 12px;background:#fee2e2;color:#991b1b;border-radius:6px;font-size:13px'>"
+								+ "No leave allocation for the selected dates.</div>";
+							canSubmit = false;
+						} else {
+							const count = g.dates.length;
+							const bal = parseFloat((g.period.balances || {})[lt]);
+							if (isNaN(bal)) {
+								html = "<div style='padding:7px 12px;background:#fef3c7;color:#92400e;border-radius:6px;font-size:13px'>"
+									+ "No <b>" + lt + "</b> allocation in this period.</div>";
+								canSubmit = false;
+							} else if (count > bal) {
+								html = "<div style='padding:7px 12px;background:#fee2e2;color:#991b1b;border-radius:6px;font-size:13px'>"
+									+ "Selected <b>" + count + " day(s)</b> but only <b>" + bal + "</b> " + lt + " balance available.</div>";
+								canSubmit = false;
+							} else {
+								html = "<div style='padding:7px 12px;background:#dcfce7;color:#166534;border-radius:6px;font-size:13px'>"
+									+ lt + ": <b>" + count + "</b> of <b>" + bal + "</b> days will be used</div>";
+							}
+						}
+						el.html(html);
+						if (canSubmit) dlg.enable_primary_action(); else dlg.disable_primary_action();
 					};
-					submitNext(0);
+
+					const d = new frappe.ui.Dialog({
+						title: "Apply Leave - " + emp.name,
+						fields: [
+							{ fieldtype:"HTML", fieldname:"bal_html", options: "<div style='margin-bottom:12px'>"
+								+ "<div class='leave-period-warning' style='padding:8px 12px;background:#fee2e2;color:#991b1b;border-radius:6px;font-size:12px;margin-bottom:8px;border:1px solid #fca5a5;" + (isMultiPeriod ? "" : "display:none;") + "'><b>Warning:</b> Selected dates span multiple leave periods. Uncheck dates from one period before submitting.</div>"
+								+ "<div class='leave-balance-section'>" + (isMultiPeriod ? "" : buildBalHtml()) + "</div>"
+								+ "</div>" },
+							{ fieldtype:"HTML", fieldname:"dates_html", options: "<div style='margin-bottom:12px'><div style='font-weight:700;font-size:13px;margin-bottom:6px'>Select Dates (" + selDates.length + ")</div><div style='display:flex;flex-wrap:wrap'>" + dateCheckboxes + "</div></div>" },
+							{ fieldtype:"Select", fieldname:"leave_type", label:"Leave Type", options:[...new Set(periods.filter(p=>p.has_allocation).flatMap(p=>Object.keys(p.balances||{})))].sort().join("\n"), reqd:1, change: function() { updateValidation(d); } },
+							{ fieldtype:"HTML", fieldname:"validation_msg", options: "<div class='leave-validation-msg'></div>" },
+							{ fieldtype:"Small Text", fieldname:"reason", label:"Reason" },
+						],
+						size: "large",
+						primary_action_label: "Submit Leave",
+						primary_action(vals) {
+							const checked = [];
+							d.$wrapper.find("input[data-date]").each(function() {
+								if (this.checked) checked.push(this.getAttribute("data-date"));
+							});
+							if (!checked.length) { frappe.msgprint("Please select at least one date"); return; }
+							d.disable_primary_action();
+							let submitted = 0; let failed = 0; const total = checked.length;
+							const submitNext = (idx) => {
+								if (idx >= total) {
+									d.hide();
+									setSelectedDates({});
+									if (failed) frappe.show_alert({ message: submitted + " of " + total + " leave applications submitted (" + failed + " failed)", indicator:"orange" });
+									else frappe.show_alert({ message: total + " leave application(s) submitted", indicator:"green" });
+									if (onRefresh) onRefresh();
+									return;
+								}
+								frappe.call({
+									method:"possibleworks.branding.page.attendance_details_dashboard.attendance_details_dashboard.submit_leave_application",
+									args:{ employee:emp.id, employee_name:emp.name,
+										from_date:checked[idx], to_date:checked[idx],
+										leave_type:vals.leave_type, description:vals.reason||"" },
+									callback: () => { submitted++; submitNext(idx+1); },
+									error: () => { failed++; submitNext(idx+1); }
+								});
+							};
+							submitNext(0);
+						}
+					});
+					d.show();
+					d.$wrapper.on("change", "input[data-date]", function() { updateValidation(d); });
 				}
 			});
-			d.show();
-			/* re-validate when date checkboxes change */
-			d.$wrapper.on("change", "input[data-date]", function() { updateValidation(d); });
 		};
 
 		const openRegModal = () => {
@@ -515,6 +608,29 @@ function _mountDashboard(mount) {
 			d.show();
 		};
 
+		/* build full date range so all dates in the selected period are shown */
+		const _pad2 = n => String(n).padStart(2, "0");
+		const allDatesInRange = useMemo(() => {
+			if (!date || !toDate) return records.map(r => r.date);
+			const dates = [];
+			const end = new Date(toDate + "T00:00:00");
+			const cur = new Date(date + "T00:00:00");
+			while (cur <= end) {
+				const dow = cur.getDay();
+				if (dow !== 0) { /* skip Sundays */
+					dates.push(cur.getFullYear() + "-" + _pad2(cur.getMonth()+1) + "-" + _pad2(cur.getDate()));
+				}
+				cur.setDate(cur.getDate() + 1);
+			}
+			return dates;
+		}, [date, toDate, records]);
+
+		const recordMap = useMemo(() => {
+			const m = {};
+			records.forEach(r => { m[r.date] = r; });
+			return m;
+		}, [records]);
+
 		/* helper: status badge for a record row */
 		function statusBadge(r) {
 			const lp = (lpEntries||[]).find(l => r.date >= l.from && r.date <= l.to);
@@ -547,8 +663,59 @@ function _mountDashboard(mount) {
 		const tdStyle = { padding:"10px 14px", borderBottom:"1px solid #f3f4f6" };
 		const monoTd = Object.assign({}, tdStyle, { fontFamily:"'Space Mono',monospace", color:"#6b7280" });
 		const cbStyle = { width:16, height:16, cursor:"pointer", accentColor:"#4f46e5" };
-		const tableRows = records.map((r, i) => {
+		const tableRows = allDatesInRange.map((dateStr, i) => {
+			const r = recordMap[dateStr];
 			const bg = i % 2 === 0 ? "#fff" : "#fafaf8";
+
+			/* no attendance record for this date — show compact "No Record" row */
+			if (!r) {
+				const hasLP = dateHasLP(dateStr);
+				const hasAP = dateHasAP(dateStr);
+				const isApprovable = hasLP || hasAP;
+				const checked = isApprovable ? !!selectedApproveDates[dateStr] : false;
+				const onToggle = isApprovable ? () => toggleApproveDate(dateStr) : null;
+				const cbCell = isApprovable
+					? html`<td style=${tdStyle}><input type="checkbox" checked=${checked} onChange=${onToggle} style=${{ width:16, height:16, cursor:"pointer", accentColor:"#f59e0b" }} /></td>`
+					: html`<td style=${tdStyle}></td>`;
+				if (hasLP || hasAP) {
+					return html`<tr key=${dateStr} style=${{ background: bg }}>
+						${cbCell}
+						<td style=${monoTd}>${dateStr}</td>
+						<td style=${tdStyle}>${statusBadge({ date: dateStr, status: "" })}</td>
+						<td style=${monoTd}>—</td>
+						<td style=${monoTd}>—</td>
+						<td style=${tdStyle}><span style=${{ color:"#9ca3af", fontSize:12 }}>—</span></td>
+						<td style=${tdStyle}><span style=${{ color:"#9ca3af", fontSize:12 }}>—</span></td>
+					</tr>`;
+				}
+				/* check if this date is a holiday for the employee */
+				const holDates = empHolidays && empHolidays.dates;
+				const holMap   = empHolidays && empHolidays.map;
+				const isHoliday = holDates && holDates.has(dateStr);
+				if (isHoliday) {
+					const hol = (holMap && holMap[dateStr]) || {};
+					const isWeeklyOff = hol.weekly_off;
+					const label = isWeeklyOff ? "Weekly Off" : (hol.description || "Holiday");
+					const holBg = isWeeklyOff ? "#f3f4f6" : "#ede9fe";
+					const holFg = isWeeklyOff ? "#6b7280" : "#7c3aed";
+					return html`<tr key=${dateStr} style=${{ background: holBg, opacity:0.85 }}>
+						<td style=${tdStyle}></td>
+						<td style=${monoTd}>${dateStr}</td>
+						<td style=${tdStyle}>
+							<span style=${{ background: holBg, color: holFg, border:"1px solid " + holFg, borderRadius:4, padding:"2px 8px", fontSize:11, fontWeight:600 }}>${label}</span>
+						</td>
+						<td style=${monoTd} colspan="4"><span style=${{ color:"#d1d5db" }}>—</span></td>
+					</tr>`;
+				}
+				return html`<tr key=${dateStr} style=${{ background:"#fafaf8", opacity:0.55 }}>
+					<td style=${tdStyle}></td>
+					<td style=${monoTd}>${dateStr}</td>
+					<td style=${tdStyle}><span style=${{ color:"#d1d5db", fontSize:12, fontStyle:"italic" }}>No Record</span></td>
+					<td style=${monoTd} colspan="4"><span style=${{ color:"#d1d5db" }}>—</span></td>
+				</tr>`;
+			}
+
+			/* normal attendance record row */
 			const hasLP = dateHasLP(r.date);
 			const hasAP = dateHasAP(r.date);
 			const isApprovable = hasLP || hasAP;
@@ -1150,7 +1317,7 @@ function _mountDashboard(mount) {
 					${activeTab==="employees" && selectedEmployee && (() => {
 						const emp = employeeSummaries.find(e=>e.id===selectedEmployee);
 						if (!emp) return null;
-						const lpEntries=(leaveRequests[emp.id]||[]).filter(l=>(l.status||"Open")==="Open"); const apEntries=(attRequests[emp.id]||[]).filter(a=>a.docstatus===0); return html`<${EmployeeDetail} emp=${emp} records=${selectedEmpRecords} lpCount=${lpEntries.reduce((s,l)=>{ const a=new Date(l.from+"T00:00:00"),b=new Date(l.to+"T00:00:00"); return s+Math.round((b-a)/86400000)+1; },0)} apCount=${apEntries.reduce((s,a)=>{ const x=new Date(a.from+"T00:00:00"),y=new Date(a.to+"T00:00:00"); return s+Math.round((y-x)/86400000)+1; },0)} lpEntries=${lpEntries} apEntries=${apEntries} onBack=${()=>{ setSelectedEmployee(null); setActiveTab("daily"); }} onRefresh=${()=>fetchData(true)} />`;
+						const lpEntries=(leaveRequests[emp.id]||[]).filter(l=>(l.status||"Open")==="Open"); const apEntries=(attRequests[emp.id]||[]).filter(a=>a.docstatus===0); return html`<${EmployeeDetail} emp=${emp} records=${selectedEmpRecords} lpCount=${lpEntries.reduce((s,l)=>{ const a=new Date(l.from+"T00:00:00"),b=new Date(l.to+"T00:00:00"); return s+Math.round((b-a)/86400000)+1; },0)} apCount=${apEntries.reduce((s,a)=>{ const x=new Date(a.from+"T00:00:00"),y=new Date(a.to+"T00:00:00"); return s+Math.round((y-x)/86400000)+1; },0)} lpEntries=${lpEntries} apEntries=${apEntries} onBack=${()=>{ setSelectedEmployee(null); setActiveTab("daily"); }} onRefresh=${()=>fetchData(true)} date=${fromDate} toDate=${toDate} empHolidays=${employeeHolidays[emp.id]||{}} />`;
 					})()}
 
 					<!-- ══ DAILY VIEW ══ -->

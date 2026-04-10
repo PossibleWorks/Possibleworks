@@ -17,17 +17,20 @@ def get_attendance_data(from_date, to_date):
 		limit_page_length=0,
 	)
 
+	employee_ids = [e.name for e in employees]
+
 	attendance = frappe.get_list(
 		"Attendance",
 		fields=[
 			"employee", "employee_name", "department", "attendance_date",
 			"status", "shift", "in_time", "out_time", "late_entry", "early_exit",
 		],
-		filters=[["attendance_date", "between", [from_date, to_date]]],
+		filters=[
+			["attendance_date", "between", [from_date, to_date]],
+			["employee", "in", employee_ids] if employee_ids else ["employee", "=", ""],
+		],
 		limit_page_length=0,
 	)
-
-	employee_ids = [e.name for e in employees]
 
 	# Fetch holiday assignments using raw SQL for reliability
 	# Get most recent assignment per employee (Employee-level)
@@ -150,60 +153,84 @@ def get_attendance_data(from_date, to_date):
 
 
 @frappe.whitelist()
-def get_leave_balances(employee):
-	"""Return leave balances for an employee.
+def get_leave_balances(employee, date=None):
+	"""Return leave balances for an employee for the allocation period covering `date`.
 
-	Uses Leave Allocation for allocated/carry-forward counts and
-	Leave Application (submitted) for taken days.
+	Uses the HRMS get_leave_details API which correctly handles carry-forward
+	leaves, allocation periods, and leave year boundaries (e.g. April new year).
+	Pass date as the first day of the selected month so April selections pick up
+	the new leave year allocation instead of the previous year's.
 	"""
-	alloc_rows = frappe.db.sql(
-		"""
-		SELECT leave_type,
-		       SUM(total_leaves_allocated) as allocated
-		FROM `tabLeave Allocation`
-		WHERE employee = %s
-		  AND docstatus = 1
-		  AND from_date <= CURDATE()
-		  AND to_date >= CURDATE()
-		GROUP BY leave_type
-		""",
-		(employee,),
-		as_dict=True,
-	)
+	from frappe.utils import getdate, nowdate
+	from hrms.hr.doctype.leave_application.leave_application import get_leave_details
 
-	if not alloc_rows:
-		return []
-
-	leave_types = [r.leave_type for r in alloc_rows]
-	placeholders = ", ".join(["%s"] * len(leave_types))
-
-	taken_rows = frappe.db.sql(
-		f"""
-		SELECT leave_type,
-		       SUM(total_leave_days) as taken
-		FROM `tabLeave Application`
-		WHERE employee = %s
-		  AND leave_type IN ({placeholders})
-		  AND docstatus = 1
-		GROUP BY leave_type
-		""",
-		tuple([employee] + leave_types),
-		as_dict=True,
-	)
-	taken_map = {r.leave_type: float(r.taken or 0) for r in taken_rows}
+	date = getdate(date) if date else getdate(nowdate())
+	leave_details = get_leave_details(employee, date)
+	allocation = leave_details.get("leave_allocation", {})
 
 	result = []
-	for r in alloc_rows:
-		allocated = float(r.allocated or 0)
-		taken = taken_map.get(r.leave_type, 0)
+	for leave_type, details in allocation.items():
 		result.append({
-			"leave_type": r.leave_type,
-			"allocated": allocated,
-			"taken": taken,
-			"balance": allocated - taken,
+			"leave_type": leave_type,
+			"allocated": details.get("total_leaves", 0),
+			"taken": details.get("leaves_taken", 0),
+			"balance": details.get("remaining_leaves", 0),
 		})
 	result.sort(key=lambda x: x["leave_type"])
 	return result
+
+
+@frappe.whitelist()
+def get_leave_periods_for_dates(employee, dates):
+	"""Group a list of dates by their leave allocation period and return per-period balances.
+
+	Returns a list of period objects:
+	  { from_date, to_date, has_allocation, dates: [...], balances: {leave_type: remaining} }
+	"""
+	import json
+	from frappe.utils import getdate
+	from hrms.hr.doctype.leave_application.leave_application import (
+		get_leave_allocation_records,
+		get_leave_details,
+	)
+
+	if isinstance(dates, str):
+		dates = json.loads(dates)
+
+	periods = {}  # key -> period dict
+
+	for d in sorted(set(dates)):
+		alloc = get_leave_allocation_records(employee, getdate(d))
+		if not alloc:
+			key = "__no_alloc__"
+			if key not in periods:
+				periods[key] = {
+					"from_date": None,
+					"to_date": None,
+					"has_allocation": False,
+					"dates": [],
+					"balances": {},
+				}
+			periods[key]["dates"].append(d)
+			continue
+
+		first = next(iter(alloc.values()))
+		key = f"{first.from_date}|{first.to_date}"
+		if key not in periods:
+			leave_details = get_leave_details(employee, getdate(d))
+			periods[key] = {
+				"from_date": str(first.from_date),
+				"to_date": str(first.to_date),
+				"has_allocation": True,
+				"dates": [],
+				"balances": {
+					lt: v.get("remaining_leaves", 0)
+					for lt, v in leave_details.get("leave_allocation", {}).items()
+				},
+			}
+		periods[key]["dates"].append(d)
+
+	return list(periods.values())
 
 
 @frappe.whitelist()
