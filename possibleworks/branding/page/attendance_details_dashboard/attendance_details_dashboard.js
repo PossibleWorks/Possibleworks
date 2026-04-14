@@ -571,7 +571,8 @@ function _mountDashboard(mount) {
 					{ fieldtype:"HTML", fieldname:"dates_html", options: "<div style='margin-bottom:12px'><div style='font-weight:700;font-size:13px;margin-bottom:6px'>Select Dates (" + selDates.length + ")</div><div style='display:flex;flex-wrap:wrap'>" + dateCheckboxes + "</div></div>" },
 					{ fieldtype:"Time", fieldname:"in_time", label:"In Time" },
 					{ fieldtype:"Time", fieldname:"out_time", label:"Out Time" },
-					{ fieldtype:"Small Text", fieldname:"reason", label:"Reason", reqd:1 },
+					{ fieldtype:"Select", fieldname:"reason", label:"Reason", options:"On Duty", default:"On Duty", reqd:1 },
+					{ fieldtype:"Small Text", fieldname:"explanation", label:"Explanation" },
 				],
 				primary_action_label: "Submit",
 				primary_action(vals) {
@@ -595,10 +596,10 @@ function _mountDashboard(mount) {
 						frappe.call({
 							method:"frappe.client.insert",
 							args:{ doc:{ doctype:"Attendance Request", employee:emp.id, employee_name:emp.name,
-								from_date:dt, to_date:dt, reason:vals.reason,
+								from_date:dt, to_date:dt, reason:vals.reason, explanation:vals.explanation||"",
 								...(vals.in_time ? { in_time: dt+" "+vals.in_time } : {}),
 								...(vals.out_time ? { out_time: dt+" "+vals.out_time } : {}) }},
-							callback: () => { submitted++; submitNext(idx+1); },
+							callback: (r) => { frappe.call({ method:"frappe.client.submit", args:{ doc: r.message }, callback: () => { submitted++; submitNext(idx+1); }, error: () => { failed++; submitNext(idx+1); } }); },
 							error: () => { failed++; submitNext(idx+1); }
 						});
 					};
