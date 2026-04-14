@@ -132,4 +132,4 @@ class SettingsHelper:
             return BATCH_SIZE
 
         except Exception:
-            return 100
+            return 5

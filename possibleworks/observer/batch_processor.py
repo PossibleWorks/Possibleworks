@@ -8,6 +8,7 @@ This is meant to run periodically (e.g., every 10 seconds via Frappe task).
 import frappe
 import json
 import requests
+import time
 from typing import List, Dict, Tuple
 from datetime import datetime, timezone
 from .redis_buffer_service import RedisBufferService
@@ -128,6 +129,9 @@ class BatchProcessor:
                 "Content-Type": "application/json",
                 "User-Agent": "Frappe-Possibleworks/1.0"
             }
+
+            # Add 2-second delay before sending batch to backend
+            time.sleep(2)
 
             # Send POST request
             response = requests.post(
