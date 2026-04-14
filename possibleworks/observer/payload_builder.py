@@ -218,6 +218,55 @@ class PayloadBuilder:
             return None
 
     @staticmethod
+    def build_simple_payload(doc: Any) -> Optional[Dict]:
+        """
+        Build a minimal event payload for IMMEDIATE_SEND_DOCTYPES.
+
+        Returns only the fields the backend API needs:
+        {
+            "tenant_id": "...",
+            "user": "john.doe@company.com",
+            "document": {
+                "doctype": "Purchase Order",
+                "name": "PUR-ORD-2026-00042"
+            }
+        }
+
+        Returns None if tenant_id cannot be resolved (event is skipped).
+        """
+        try:
+            company = PayloadBuilder._resolve_company(doc)
+            if not company:
+                frappe.logger().warning(
+                    f"PayloadBuilder: Skipping — could not resolve company. "
+                    f"doctype={doc.doctype} name={doc.name}"
+                )
+                return None
+
+            tenant_id = frappe.db.get_value("Company", company, "custom_tenant_id") or ""
+            if not tenant_id:
+                frappe.logger().warning(
+                    f"PayloadBuilder: Skipping — company '{company}' has no custom_tenant_id. "
+                    f"doctype={doc.doctype} name={doc.name}"
+                )
+                return None
+
+            return {
+                "tenant_id": tenant_id,
+                "user": frappe.session.user,
+                "document": {
+                    "doctype": doc.doctype,
+                    "name": doc.name,
+                },
+            }
+
+        except Exception as e:
+            frappe.logger().error(
+                f"PayloadBuilder: Error building simple payload for {doc.doctype}/{doc.name}: {str(e)}"
+            )
+            return None
+
+    @staticmethod
     def payload_to_json(payload: Dict) -> str:
         """
         Convert payload to JSON string.

@@ -82,7 +82,7 @@ override_doctype_class = {
 
 scheduler_events = {
     "cron": {
-        "*/2 * * * *": [
+        "*/1 * * * *": [
             "possibleworks.observer.batch_processor.process_event_batch"
         ]
     }

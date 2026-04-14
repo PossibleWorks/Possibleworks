@@ -9,7 +9,11 @@ from .settings_helper import SettingsHelper
 from .payload_builder import PayloadBuilder
 from .redis_buffer_service import RedisBufferService
 from .workflow_service import WorkflowService
-from .constants import ALWAYS_OBSERVED_DOCTYPES, SKIP_STATE_CHANGED_CHECK_DOCTYPES
+from .constants import (
+    ALWAYS_OBSERVED_DOCTYPES,
+    IMMEDIATE_SEND_DOCTYPES,
+    SKIP_STATE_CHANGED_CHECK_DOCTYPES,
+)
 
 
 class WorkflowEventObserver:
@@ -51,6 +55,10 @@ class WorkflowEventObserver:
 
         # Always observe explicitly whitelisted doctypes
         if doctype in ALWAYS_OBSERVED_DOCTYPES:
+            return True
+
+        # Always observe procurement doctypes (immediate delivery)
+        if doctype in IMMEDIATE_SEND_DOCTYPES:
             return True
 
         # Only process doctypes that have an active workflow
@@ -119,33 +127,43 @@ class WorkflowEventObserver:
                 f"Observer: Processing {doc.doctype}/{doc.name} - {event_type}"
             )
 
-            # Build the payload
-            extra_fields = None
-            if doc.doctype == "Employee" and event_type == "on_update":
-                doc_before = doc.get_doc_before_save()
-                if doc_before:
-                    extra_fields = {"before_save_company_email": doc_before.company_email}
-            payload = PayloadBuilder.build_payload(doc, event_type, extra_fields=extra_fields)
-            
-            if not payload:
-                frappe.logger().warning(
-                    f"Observer: Failed to build payload for {doc.doctype}/{doc.name}"
+            if doc.doctype in IMMEDIATE_SEND_DOCTYPES:
+                payload = PayloadBuilder.build_simple_payload(doc)
+                if not payload:
+                    frappe.logger().warning(
+                        f"Observer: Failed to build simple payload for {doc.doctype}/{doc.name}"
+                    )
+                    return False
+                frappe.enqueue(
+                    "possibleworks.observer.batch_processor.send_single_event",
+                    payload=payload,
+                    queue="short",
                 )
-                return False
-
-            # Push to Redis
-            success = RedisBufferService.push_event(payload)
-            
-            if success:
                 frappe.logger().debug(
-                    f"Observer: Event queued for {doc.doctype}/{doc.name}"
+                    f"Observer: Event enqueued for {doc.doctype}/{doc.name} - {event_type}"
                 )
             else:
-                frappe.logger().warning(
-                    f"Observer: Failed to queue event for {doc.doctype}/{doc.name}"
-                )
-
-            return success
+                extra_fields = {}
+                if doc.doctype == "Employee" and event_type == "on_update":
+                    doc_before = doc.get_doc_before_save()
+                    if doc_before:
+                        extra_fields = {"before_save_company_email": doc_before.company_email}
+                payload = PayloadBuilder.build_payload(doc, event_type, extra_fields=extra_fields)
+                if not payload:
+                    frappe.logger().warning(
+                        f"Observer: Failed to build payload for {doc.doctype}/{doc.name}"
+                    )
+                    return False
+                success = RedisBufferService.push_event(payload)
+                if success:
+                    frappe.logger().debug(
+                        f"Observer: Event queued for {doc.doctype}/{doc.name} - {event_type}"
+                    )
+                else:
+                    frappe.logger().warning(
+                        f"Observer: Failed to queue event for {doc.doctype}/{doc.name}"
+                    )
+            return True
 
         except Exception as e:
             frappe.logger().error(

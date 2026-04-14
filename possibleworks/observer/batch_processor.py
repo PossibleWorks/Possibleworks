@@ -8,6 +8,7 @@ This is meant to run periodically (e.g., every 10 seconds via Frappe task).
 import frappe
 import json
 import requests
+import time
 from typing import List, Dict, Tuple
 from datetime import datetime, timezone
 from .redis_buffer_service import RedisBufferService
@@ -129,6 +130,9 @@ class BatchProcessor:
                 "User-Agent": "Frappe-Possibleworks/1.0"
             }
 
+            # Add 2-second delay before sending batch to backend
+            time.sleep(2)
+
             # Send POST request
             response = requests.post(
                 webhook_url,
@@ -206,3 +210,58 @@ def process_event_batch():
     result = BatchProcessor.process_batch()
     frappe.logger().info(f"Batch processing result: {result}")
     return result
+
+
+def send_single_event(payload: dict):
+    """
+    Frappe background job for immediate event delivery (IMMEDIATE_SEND_DOCTYPES only).
+
+    Sends a minimal payload directly to the backend API:
+    {
+        "events": [
+            {
+                "tenant_id": "...",
+                "user": "john.doe@company.com",
+                "document": {"doctype": "...", "name": "..."}
+            }
+        ]
+    }
+
+    Fires within 1-3 seconds of the DB commit — no cron delay.
+    On failure, logs the error.
+    """
+    try:
+        url = SettingsHelper.get_webhook_url()
+        webhook_url = f"{url}/frappe-user/workflow-events"
+
+        body = {"events": [payload]}
+
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Frappe-Possibleworks/1.0",
+        }
+
+        response = requests.post(webhook_url, json=body, headers=headers, timeout=30)
+        frappe.logger().info(f"send_single_event: Response: {response.text}")
+
+        if response.status_code not in [200, 201, 202]:
+            frappe.logger().error(
+                f"send_single_event: Webhook returned {response.status_code} "
+                f"doctype={payload.get('document', {}).get('doctype')} "
+                f"name={payload.get('document', {}).get('name')}"
+            )
+
+    except requests.exceptions.Timeout:
+        frappe.logger().error(
+            f"send_single_event: Request timed out "
+            f"doctype={payload.get('document', {}).get('doctype')} "
+            f"name={payload.get('document', {}).get('name')}"
+        )
+    except requests.exceptions.ConnectionError:
+        frappe.logger().error(
+            f"send_single_event: Failed to connect to webhook "
+            f"doctype={payload.get('document', {}).get('doctype')} "
+            f"name={payload.get('document', {}).get('name')}"
+        )
+    except Exception as e:
+        frappe.logger().error(f"send_single_event: Unexpected error: {str(e)}")
