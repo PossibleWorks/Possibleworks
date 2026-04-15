@@ -32,41 +32,35 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 				raise
 			return
 
-		# Always skip HRMS status-based attendance check when custom validation is enabled
-		self._skip_attendance_validation = True
+		# Custom validation: explicitly call HRMS validations we need,
+		# skip validate_attendance() and use working hours check instead
+		from hrms.hr.utils import validate_active_employee, validate_dates, validate_overlap
+		from frappe.utils import getdate
 
-		super().validate()
+		validate_active_employee(self.employee)
+		validate_dates(self, self.work_from_date, self.work_end_date)
 
-		# Only check working hours when attendance records were found
+		# Half-day validation
+		if self.half_day:
+			if not self.half_day_date:
+				frappe.throw(_("Half Day Date is mandatory"))
+			if not getdate(self.work_from_date) <= getdate(self.half_day_date) <= getdate(self.work_end_date):
+				frappe.throw(_("Half Day Date should be in between Work From Date and Work End Date"))
+
+		validate_overlap(self, self.work_from_date, self.work_end_date)
+		self.validate_holidays()
+
+		# SKIP HRMS's validate_attendance() — use custom working hours validation instead
 		if self._submitted_attendance_exists():
 			self._validate_working_hours(policy)
 
+		# Leave type validation
+		if not self.leave_type:
+			frappe.throw(_("Leave Type is mandatory"))
+
 	# --- override points ------------------------------------------------------
 	# The methods below override HRMS methods solely to customize error messages.
-	# The original HRMS logic is preserved by calling super() — only the thrown
-	# message is replaced. frappe.message_log.pop() removes the original HRMS
-	# message before raising ours so both don't appear together.
-
-	def validate_attendance(self):
-		if getattr(self, "_skip_attendance_validation", False):
-			return
-		try:
-			super().validate_attendance()
-		except frappe.ValidationError as e:
-			msg = str(e)
-			# HRMS: "You were only present for Half Day..." → custom message
-			if "only present for Half Day" in msg:
-				frappe.message_log.pop()
-				frappe.throw(
-					_("You cannot apply full day compensatory leave request because attendance is marked as Half Day.")
-				)
-			# HRMS: "You are not present all day(s)..." → custom message
-			elif "not present all day" in msg:
-				frappe.message_log.pop()
-				frappe.throw(
-					_("Compensatory leave request is not applicable for the selected date(s) due to no attendance record.")
-				)
-			raise
+	# Used only when custom validation is disabled.
 
 	def validate_holidays(self):
 		try:
@@ -96,8 +90,8 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 
 	def _submitted_attendance_exists(self):
 		"""
-		Use the same filters as HRMS validate_attendance so the flag is set
-		only when HRMS would itself throw due to missing records.
+		Check if attendance records exist using the same filters as HRMS.
+		This determines whether to run working hours validation.
 		"""
 		return bool(
 			frappe.db.count(
