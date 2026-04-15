@@ -11,6 +11,8 @@ from hrms.hr.doctype.compensatory_leave_request.compensatory_leave_request impor
 
 class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 	def validate(self):
+		# TEST LOG: To verify if this new code version is being executed
+		frappe.logger().warning("🔥 CUSTOM COMP OFF VALIDATION CODE RUNNING - NEW VERSION DEPLOYED")
 		policy = frappe.get_single("Policy Configuration")
 
 		if not policy.enable_custom_comp_off_validation:
