@@ -68,7 +68,6 @@ doc_events = {
 }
 
 override_doctype_class = {
-	"Compensatory Leave Request": "possibleworks.compensatory_leave_request.PossibleWorksCompensatoryLeaveRequest",
 	"AI Document Processor Settings": "possibleworks.ap_invoice_processing.doctype.ai_document_processor_settings.ai_document_processor_settings.AIDocumentProcessorSettings",
 	"AI Document Processor Supported DocType": "possibleworks.ap_invoice_processing.doctype.ai_document_processor_supported_doctype.ai_document_processor_supported_doctype.AIDocumentProcessorSupportedDocType",
 	"AI Document Extraction Log": "possibleworks.ap_invoice_processing.doctype.ai_document_extraction_log.ai_document_extraction_log.AIDocumentExtractionLog",
