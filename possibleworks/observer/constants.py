@@ -21,6 +21,10 @@ IMMEDIATE_SEND_DOCTYPES = [
     "Purchase Invoice",
     "Payment Request",
     "Payment Entry",
+    "Leave Application",
+    "Attendance Request",
+    "Compensatory Leave Request",
+    "Employee",
 ]
 
 # Doctypes where on_update fires on ANY field change (not just state transitions).

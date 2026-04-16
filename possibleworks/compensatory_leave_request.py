@@ -13,7 +13,22 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 	def validate(self):
 		policy = frappe.get_single("Policy Configuration")
 
+		frappe.log_error(
+			f"[CLR Debug] validate() started\n"
+			f"  employee={self.employee}\n"
+			f"  work_from_date={self.work_from_date}\n"
+			f"  work_end_date={self.work_end_date}\n"
+			f"  half_day={self.half_day}\n"
+			f"  enable_custom_comp_off_validation={policy.enable_custom_comp_off_validation}\n"
+			f"  class={type(self).__module__}.{type(self).__name__}",
+			"CLR Debug: validate start",
+		)
+
 		if not policy.enable_custom_comp_off_validation:
+			frappe.log_error(
+				"[CLR Debug] Taking STANDARD path (flag is off) — _skip_attendance_validation will NOT be set",
+				"CLR Debug: standard path",
+			)
 			# Run standard HRMS validation but intercept specific error messages
 			# and replace them with user-friendly custom messages.
 			# This avoids editing HRMS source code directly.
@@ -32,13 +47,25 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 				raise
 			return
 
+		frappe.log_error(
+			"[CLR Debug] Taking CUSTOM path (flag is on) — setting _skip_attendance_validation=True",
+			"CLR Debug: custom path",
+		)
+
 		# Always skip HRMS status-based attendance check when custom validation is enabled
 		self._skip_attendance_validation = True
 
 		super().validate()
 
+		attendance_exists = self._submitted_attendance_exists()
+		frappe.log_error(
+			f"[CLR Debug] After super().validate()\n"
+			f"  _submitted_attendance_exists={attendance_exists}",
+			"CLR Debug: post super validate",
+		)
+
 		# Only check working hours when attendance records were found
-		if self._submitted_attendance_exists():
+		if attendance_exists:
 			self._validate_working_hours(policy)
 
 	# --- override points ------------------------------------------------------
@@ -48,8 +75,25 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 	# message before raising ours so both don't appear together.
 
 	def validate_attendance(self):
+		skip = getattr(self, "_skip_attendance_validation", "NOT SET")
+		frappe.log_error(
+			f"[CLR Debug] validate_attendance() called\n"
+			f"  _skip_attendance_validation={skip}\n"
+			f"  employee={self.employee}\n"
+			f"  work_from_date={self.work_from_date}\n"
+			f"  work_end_date={self.work_end_date}",
+			"CLR Debug: validate_attendance",
+		)
 		if getattr(self, "_skip_attendance_validation", False):
+			frappe.log_error(
+				"[CLR Debug] validate_attendance() — SKIPPING (flag is True)",
+				"CLR Debug: attendance skipped",
+			)
 			return
+		frappe.log_error(
+			"[CLR Debug] validate_attendance() — RUNNING super().validate_attendance()",
+			"CLR Debug: attendance running",
+		)
 		try:
 			super().validate_attendance()
 		except frappe.ValidationError as e:
