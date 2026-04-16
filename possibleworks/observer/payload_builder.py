@@ -218,7 +218,7 @@ class PayloadBuilder:
             return None
 
     @staticmethod
-    def build_simple_payload(doc: Any) -> Optional[Dict]:
+    def build_simple_payload(doc_before: Any,doc: Any, event_type: str) -> Optional[Dict]:
         """
         Build a minimal event payload for IMMEDIATE_SEND_DOCTYPES.
 
@@ -251,12 +251,20 @@ class PayloadBuilder:
                 )
                 return None
 
+            extra_fields={}
+            if doc_before:
+                doc_before_dict = doc_before.as_dict()
+                extra_fields = {"before_save_company_email": doc_before_dict["company_email"]}
+
             return {
                 "tenant_id": tenant_id,
                 "user": frappe.session.user,
+                "event_type": event_type,
                 "document": {
                     "doctype": doc.doctype,
                     "name": doc.name,
+                    "status": doc.status,
+                    **extra_fields
                 },
             }
 

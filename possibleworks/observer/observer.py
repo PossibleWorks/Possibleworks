@@ -128,7 +128,8 @@ class WorkflowEventObserver:
             )
 
             if doc.doctype in IMMEDIATE_SEND_DOCTYPES:
-                payload = PayloadBuilder.build_simple_payload(doc)
+                doc_before = doc.get_doc_before_save()
+                payload = PayloadBuilder.build_simple_payload(doc_before,doc,event_type)
                 if not payload:
                     frappe.logger().warning(
                         f"Observer: Failed to build simple payload for {doc.doctype}/{doc.name}"
