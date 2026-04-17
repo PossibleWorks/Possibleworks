@@ -254,7 +254,9 @@ class PayloadBuilder:
             extra_fields={}
             if doc_before:
                 doc_before_dict = doc_before.as_dict()
-                extra_fields = {"before_save_company_email": doc_before_dict["company_email"]}
+                company_email_before = doc_before_dict.get("company_email")
+                if company_email_before is not None:
+                    extra_fields = {"before_save_company_email": company_email_before}
 
             return {
                 "tenant_id": tenant_id,
@@ -263,7 +265,7 @@ class PayloadBuilder:
                 "document": {
                     "doctype": doc.doctype,
                     "name": doc.name,
-                    "status": doc.status,
+                    "status": getattr(doc, "status", None),
                     **extra_fields
                 },
             }
