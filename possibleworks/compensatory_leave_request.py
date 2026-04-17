@@ -39,11 +39,23 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 				# HRMS overlap error → custom message
 				if "A Compensatory Leave Request exists between" in msg:
 					frappe.message_log.pop()
-					frappe.throw(
-						_("Compensatory leave request already exists on {0}.").format(
-							frappe.bold(frappe.format(self.work_from_date, {"fieldtype": "Date"}))
-						)
+					existing_status = frappe.db.get_value(
+						"Compensatory Leave Request",
+						{
+							"employee": self.employee,
+							"work_from_date": ["<=", self.work_end_date],
+							"work_end_date": [">=", self.work_from_date],
+							"docstatus": ["in", [0, 1]],
+							"name": ["!=", self.name],
+						},
+						"docstatus",
+						order_by="docstatus desc",
 					)
+					date_str = frappe.bold(frappe.format(self.work_from_date, {"fieldtype": "Date"}))
+					if existing_status == 1:
+						frappe.throw(_("Compensatory request already approved for {0}.").format(date_str))
+					else:
+						frappe.throw(_("Compensatory request already exists for {0}.").format(date_str))
 				raise
 			return
 
