@@ -266,6 +266,7 @@ class PayloadBuilder:
                     "doctype": doc.doctype,
                     "name": doc.name,
                     "status": getattr(doc, "status", None),
+                    "employee": getattr(doc, "employee", None),
                     **extra_fields
                 },
             }
