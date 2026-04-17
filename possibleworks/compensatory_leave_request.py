@@ -29,34 +29,7 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 				"[CLR Debug] Taking STANDARD path (flag is off) — _skip_attendance_validation will NOT be set",
 				"CLR Debug: standard path",
 			)
-			# Run standard HRMS validation but intercept specific error messages
-			# and replace them with user-friendly custom messages.
-			# This avoids editing HRMS source code directly.
-			try:
-				super().validate()
-			except frappe.ValidationError as e:
-				msg = str(e)
-				# HRMS overlap error → custom message
-				if "A Compensatory Leave Request exists between" in msg:
-					frappe.message_log.pop()
-					existing_status = frappe.db.get_value(
-						"Compensatory Leave Request",
-						{
-							"employee": self.employee,
-							"work_from_date": ["<=", self.work_end_date],
-							"work_end_date": [">=", self.work_from_date],
-							"docstatus": ["in", [0, 1]],
-							"name": ["!=", self.name],
-						},
-						"docstatus",
-						order_by="docstatus desc",
-					)
-					date_str = frappe.bold(frappe.format(self.work_from_date, {"fieldtype": "Date"}))
-					if existing_status == 1:
-						frappe.throw(_("Compensatory request already approved for {0}.").format(date_str))
-					else:
-						frappe.throw(_("Compensatory request already exists for {0}.").format(date_str))
-				raise
+			super().validate()
 			return
 
 		frappe.log_error(
