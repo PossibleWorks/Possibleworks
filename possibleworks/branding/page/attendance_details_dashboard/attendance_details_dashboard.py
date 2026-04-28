@@ -234,9 +234,10 @@ def get_leave_periods_for_dates(employee, dates):
 
 
 @frappe.whitelist()
-def submit_leave_application(employee, employee_name, from_date, to_date, leave_type, description=""):
+def submit_leave_application(employee, employee_name, from_date, to_date, leave_type, description="", half_day=0, half_day_date=None):
 	"""Create and submit a Leave Application, respecting workflow if enabled."""
 	from frappe.model.workflow import apply_workflow
+	from frappe.utils import cint
 	from possibleworks.observer.workflow_service import WorkflowService
 
 	# Resolve a valid leave approver for this employee
@@ -264,6 +265,8 @@ def submit_leave_application(employee, employee_name, from_date, to_date, leave_
 			"leave_type": leave_type,
 			"description": description,
 			"leave_approver": leave_approver,
+			"half_day": cint(half_day),
+			"half_day_date": half_day_date or (from_date if cint(half_day) else None),
 		})
 		doc.insert(ignore_permissions=True)
 
@@ -289,6 +292,8 @@ def submit_leave_application(employee, employee_name, from_date, to_date, leave_
 			"description": description,
 			"status": "Approved",
 			"leave_approver": leave_approver,
+			"half_day": cint(half_day),
+			"half_day_date": half_day_date or (from_date if cint(half_day) else None),
 		})
 		doc.insert(ignore_permissions=True)
 		doc.submit()
