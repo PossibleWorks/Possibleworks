@@ -3,8 +3,6 @@
 
 import frappe
 from frappe.model.document import Document
-from frappe.query_builder.functions import Now
-from frappe.query_builder.custom import Interval
 
 
 class ObserverEventLog(Document):
@@ -39,6 +37,9 @@ class ObserverEventLog(Document):
 		Example hook in hooks.py scheduler_events:
 		    "daily": ["possibleworks.observer.doctype.observer_event_log.observer_event_log.clear_old_logs"]
 		"""
+		from frappe.query_builder.functions import Now
+		from frappe.query_builder import Interval
+
 		table = frappe.qb.DocType("Observer Event Log")
 		frappe.db.delete(
 			table,
