@@ -37,7 +37,7 @@ class ObserverEventLog(Document):
 		`log_retention_days` field on that settings doctype.
 
 		Example hook in hooks.py scheduler_events:
-		    "daily": ["possibleworks.observer.doctype.observer_event_log.observer_event_log.run_log_cleanup"]
+		    "daily": ["possibleworks.observer.doctype.observer_event_log.observer_event_log.clear_old_logs"]
 		"""
 		table = frappe.qb.DocType("Observer Event Log")
 		frappe.db.delete(
