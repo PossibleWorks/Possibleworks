@@ -16,180 +16,216 @@ from .settings_helper import SettingsHelper
 
 
 class BatchProcessor:
-    """
-    Processor that:
-    1. Reads events from Redis
-    2. Batches them
-    3. Sends to external webhook
-    4. Removes processed events
-    
-    This prevents individual API calls for each event and instead
-    sends them in batches.
-    
-    Example: 1000 events → 10 API calls (100 events each)
-    """
+	"""
+	Processor that:
+	1. Reads events from Redis
+	2. Batches them
+	3. Sends to external webhook
+	4. Removes processed events
 
-    @staticmethod
-    def process_batch() -> Dict:
-        """
-        Main batch processing function.
-        
-        Returns:
-            {
-                "status": "success" | "error",
-                "events_processed": 150,
-                "batches_sent": 2,
-                "message": "..."
-            }
-        """
-        try:
-            # Check if webhook is configured
-            url = SettingsHelper.get_webhook_url()
-            webhook_url = f"{url}/frappe-user/workflow-events"
-            if not webhook_url:
-                frappe.logger().warning(
-                    "BatchProcessor: Webhook URL not configured in settings"
-                )
-                return {
-                    "status": "error",
-                    "events_processed": 0,
-                    "message": "Webhook URL not configured"
-                }
+	This prevents individual API calls for each event and instead
+	sends them in batches.
 
-            # Get batch size from settings
-            batch_size = SettingsHelper.get_batch_size()
+	Example: 1000 events → 10 API calls (100 events each)
+	"""
 
-            # Pop events from Redis
-            events = RedisBufferService.pop_batch(batch_size)
+	@staticmethod
+	def process_batch() -> Dict:
+		"""
+		Main batch processing function.
 
-            if not events:
-                return {
-                    "status": "success",
-                    "events_processed": 0,
-                    "message": "No events in queue"
-                }
+		Returns:
+		    {
+		        "status": "success" | "error",
+		        "events_processed": 150,
+		        "message": "..."
+		    }
+		"""
+		try:
+			url = SettingsHelper.get_webhook_url()
+			webhook_url = f"{url}/frappe-user/workflow-events"
+			if not webhook_url:
+				frappe.logger().warning(
+					"BatchProcessor: Webhook URL not configured in settings"
+				)
+				return {
+					"status": "error",
+					"events_processed": 0,
+					"message": "Webhook URL not configured"
+				}
 
-            frappe.logger().info(
-                f"BatchProcessor: Processing batch of {len(events)} events"
-            )
+			batch_size = SettingsHelper.get_batch_size()
+			events = RedisBufferService.pop_batch(batch_size)
 
-            # Send to external API
-            success, sent_count = BatchProcessor._send_to_webhook(
-                webhook_url=webhook_url,
-                events=events
-            )
+			if not events:
+				return {
+					"status": "success",
+					"events_processed": 0,
+					"message": "No events in queue"
+				}
 
-            if success:
-                return {
-                    "status": "success",
-                    "events_processed": sent_count,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            else:
-                # Re-queue events if sending failed
-                for event in events:
-                    RedisBufferService.push_event(event)
+			frappe.logger().info(
+				f"BatchProcessor: Processing batch of {len(events)} events"
+			)
 
-                return {
-                    "status": "error",
-                    "events_processed": 0,
-                    "message": "Failed to send to webhook, events re-queued"
-                }
+			# Extract log IDs and strip _log_id from events before sending to webhook
+			log_ids = [event.pop("_log_id", None) for event in events]
 
-        except Exception as e:
-            frappe.logger().error(
-                f"BatchProcessor: Error in process_batch: {str(e)}"
-            )
-            return {
-                "status": "error",
-                "message": str(e)
-            }
+			# Generate a batch ID to group these events in the log
+			batch_id = frappe.generate_hash(length=10)
 
-    @staticmethod
-    def _send_to_webhook(webhook_url: str, events: List[Dict]) -> Tuple[bool, int]:
-        """
-        Send events to external webhook.
-        
-        Args:
-            webhook_url: External API endpoint
-            events: List of event payloads
-            
-        Returns:
-            (success: bool, sent_count: int)
-        """
-        try:
-            # Prepare payload
-            payload = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "batch_count": len(events),
-                "events": events
-            }
+			# Mark all log rows as Sending
+			from frappe.utils import now_datetime
+			now = now_datetime()
+			for log_id in log_ids:
+				if log_id:
+					frappe.db.set_value("Observer Event Log", log_id, {
+						"status": "Sending",
+						"batch_id": batch_id,
+						"last_attempted_at": now,
+					})
+			if any(log_ids):
+				frappe.db.commit()
 
-            headers = {
-                "Content-Type": "application/json",
-                "User-Agent": "Frappe-Possibleworks/1.0"
-            }
+			success, sent_count, response_code, response_body, error_message = BatchProcessor._send_to_webhook(
+				webhook_url=webhook_url,
+				events=events
+			)
 
-            # Add 2-second delay before sending batch to backend
-            time.sleep(2)
+			if success:
+				sent_at = now_datetime()
+				for log_id in log_ids:
+					if log_id:
+						frappe.db.set_value("Observer Event Log", log_id, {
+							"status": "Sent",
+							"sent_at": sent_at,
+							"response_code": response_code,
+							"response_body": (response_body or "")[:2000],
+						})
+				if any(log_ids):
+					frappe.db.commit()
 
-            # Send POST request
-            response = requests.post(
-                webhook_url,
-                json=payload,
-                headers=headers,
-                timeout=30
-            )
-            frappe.logger().info(f"BatchProcessor: Response: {response.text}")
+				return {
+					"status": "success",
+					"events_processed": sent_count,
+					"timestamp": datetime.now(timezone.utc).isoformat()
+				}
+			else:
+				# Re-embed _log_id before re-queuing so the next attempt can still find the row
+				for event, log_id in zip(events, log_ids):
+					if log_id:
+						event["_log_id"] = log_id
+					RedisBufferService.push_event(event)
 
-            # Check response
-            if response.status_code in [200, 201, 202]:
-                frappe.logger().info(
-                    f"BatchProcessor: Sent {len(events)} events to {webhook_url}. "
-                    f"Status: {response.status_code}"
-                )
-                return True, len(events)
-            else:
-                frappe.logger().error(
-                    f"BatchProcessor: Webhook returned {response.status_code}. "
-                    f"Response: {response.text}"
-                )
-                return False, 0
+				# Update rows to Failed and increment retry_count
+				for log_id in log_ids:
+					if log_id:
+						current_retry = frappe.db.get_value("Observer Event Log", log_id, "retry_count") or 0
+						frappe.db.set_value("Observer Event Log", log_id, {
+							"status": "Failed",
+							"retry_count": current_retry + 1,
+							"last_attempted_at": now_datetime(),
+							"error_message": error_message or "Failed to send to webhook",
+						})
+				if any(log_ids):
+					frappe.db.commit()
 
-        except requests.exceptions.Timeout:
-            frappe.logger().error("BatchProcessor: Webhook request timed out")
-            return False, 0
+				return {
+					"status": "error",
+					"events_processed": 0,
+					"message": "Failed to send to webhook, events re-queued"
+				}
 
-        except requests.exceptions.ConnectionError:
-            frappe.logger().error("BatchProcessor: Failed to connect to webhook")
-            return False, 0
+		except Exception as e:
+			frappe.logger().error(
+				f"BatchProcessor: Error in process_batch: {str(e)}"
+			)
+			return {
+				"status": "error",
+				"message": str(e)
+			}
 
-        except Exception as e:
-            frappe.logger().error(
-                f"BatchProcessor: Error sending to webhook: {str(e)}"
-            )
-            return False, 0
+	@staticmethod
+	def _send_to_webhook(webhook_url: str, events: List[Dict]) -> Tuple[bool, int, "int | None", "str | None", "str | None"]:
+		"""
+		Send events to external webhook.
 
-    @staticmethod
-    def get_status() -> Dict:
-        """
-        Get current batch processor status.
-        
-        Returns:
-            Status information
-        """
-        try:
-            queue_stats = RedisBufferService.get_queue_stats()
-            webhook_url = SettingsHelper.get_webhook_url()
+		Args:
+		    webhook_url: External API endpoint
+		    events: List of event payloads (must already have _log_id stripped)
 
-            return {
-                "webhook_configured": bool(webhook_url),
-                "queue_stats": queue_stats,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
+		Returns:
+		    (success, sent_count, response_code, response_body, error_message)
+		"""
+		try:
+			payload = {
+				"timestamp": datetime.now(timezone.utc).isoformat(),
+				"batch_count": len(events),
+				"events": events
+			}
 
-        except Exception as e:
-            return {"error": str(e)}
+			headers = {
+				"Content-Type": "application/json",
+				"User-Agent": "Frappe-Possibleworks/1.0"
+			}
+
+			time.sleep(2)
+
+			response = requests.post(
+				webhook_url,
+				json=payload,
+				headers=headers,
+				timeout=30
+			)
+			frappe.logger().info(f"BatchProcessor: Response: {response.text}")
+
+			if response.status_code in [200, 201, 202]:
+				frappe.logger().info(
+					f"BatchProcessor: Sent {len(events)} events to {webhook_url}. "
+					f"Status: {response.status_code}"
+				)
+				return True, len(events), response.status_code, response.text, None
+			else:
+				frappe.logger().error(
+					f"BatchProcessor: Webhook returned {response.status_code}. "
+					f"Response: {response.text}"
+				)
+				return False, 0, response.status_code, response.text, f"Webhook returned {response.status_code}"
+
+		except requests.exceptions.Timeout:
+			frappe.logger().error("BatchProcessor: Webhook request timed out")
+			return False, 0, None, None, "Request timed out after 30s"
+
+		except requests.exceptions.ConnectionError:
+			frappe.logger().error("BatchProcessor: Failed to connect to webhook")
+			return False, 0, None, None, "Connection error — could not reach webhook"
+
+		except Exception as e:
+			frappe.logger().error(
+				f"BatchProcessor: Error sending to webhook: {str(e)}"
+			)
+			return False, 0, None, None, str(e)
+
+	@staticmethod
+	def get_status() -> Dict:
+		"""
+		Get current batch processor status.
+
+		Returns:
+		    Status information
+		"""
+		try:
+			queue_stats = RedisBufferService.get_queue_stats()
+			webhook_url = SettingsHelper.get_webhook_url()
+
+			return {
+				"webhook_configured": bool(webhook_url),
+				"queue_stats": queue_stats,
+				"timestamp": datetime.now(timezone.utc).isoformat()
+			}
+
+		except Exception as e:
+			return {"error": str(e)}
 
 
 # ============================================================================
@@ -197,71 +233,97 @@ class BatchProcessor:
 # ============================================================================
 
 def process_event_batch():
-    """
-    Frappe task function to process batch.
-    
-    Add to hooks.py:
-    scheduler_events = {
-        "all": [
-            "possibleworks.observer.batch_processor.process_event_batch"
-        ]
-    }
-    """
-    result = BatchProcessor.process_batch()
-    frappe.logger().info(f"Batch processing result: {result}")
-    return result
+	"""
+	Frappe task function to process batch.
+
+	Add to hooks.py:
+	scheduler_events = {
+	    "all": [
+	        "possibleworks.observer.batch_processor.process_event_batch"
+	    ]
+	}
+	"""
+	result = BatchProcessor.process_batch()
+	frappe.logger().info(f"Batch processing result: {result}")
+	return result
 
 
 def send_single_event(payload: dict):
-    """
-    Frappe background job for immediate event delivery (IMMEDIATE_SEND_DOCTYPES only).
+	"""
+	Frappe background job for immediate event delivery (IMMEDIATE_SEND_DOCTYPES only).
 
-    Sends a minimal payload directly to the backend API:
-    {
-        "events": [
-            {
-                "tenant_id": "...",
-                "user": "john.doe@company.com",
-                "document": {"doctype": "...", "name": "..."}
-            }
-        ]
-    }
+	Strips _log_id from the payload before sending, then updates the linked
+	Observer Event Log row to Sent or Failed.
+	"""
+	log_id = payload.pop("_log_id", None)
 
-    Fires within 1-3 seconds of the DB commit — no cron delay.
-    On failure, logs the error.
-    """
-    try:
-        url = SettingsHelper.get_webhook_url()
-        webhook_url = f"{url}/frappe-user/workflow-events"
+	try:
+		url = SettingsHelper.get_webhook_url()
+		webhook_url = f"{url}/frappe-user/workflow-events"
 
-        body = {"events": [payload]}
+		body = {"events": [payload]}
 
-        headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "Frappe-Possibleworks/1.0",
-        }
+		headers = {
+			"Content-Type": "application/json",
+			"User-Agent": "Frappe-Possibleworks/1.0",
+		}
 
-        response = requests.post(webhook_url, json=body, headers=headers, timeout=30)
-        frappe.logger().info(f"send_single_event: Response: {response.text}")
+		response = requests.post(webhook_url, json=body, headers=headers, timeout=30)
+		frappe.logger().info(f"send_single_event: Response: {response.text}")
 
-        if response.status_code not in [200, 201, 202]:
-            frappe.logger().error(
-                f"send_single_event: Webhook returned {response.status_code} "
-                f"doctype={payload.get('document', {}).get('doctype')} "
-                f"name={payload.get('document', {}).get('name')}"
-            )
+		if response.status_code in [200, 201, 202]:
+			if log_id:
+				from frappe.utils import now_datetime
+				frappe.db.set_value("Observer Event Log", log_id, {
+					"status": "Sent",
+					"sent_at": now_datetime(),
+					"response_code": response.status_code,
+					"response_body": response.text[:2000],
+				})
+				frappe.db.commit()
+		else:
+			frappe.logger().error(
+				f"send_single_event: Webhook returned {response.status_code} "
+				f"doctype={payload.get('document', {}).get('doctype')} "
+				f"name={payload.get('document', {}).get('name')}"
+			)
+			if log_id:
+				frappe.db.set_value("Observer Event Log", log_id, {
+					"status": "Failed",
+					"response_code": response.status_code,
+					"error_message": f"Webhook returned {response.status_code}: {response.text[:500]}",
+				})
+				frappe.db.commit()
 
-    except requests.exceptions.Timeout:
-        frappe.logger().error(
-            f"send_single_event: Request timed out "
-            f"doctype={payload.get('document', {}).get('doctype')} "
-            f"name={payload.get('document', {}).get('name')}"
-        )
-    except requests.exceptions.ConnectionError:
-        frappe.logger().error(
-            f"send_single_event: Failed to connect to webhook "
-            f"doctype={payload.get('document', {}).get('doctype')} "
-            f"name={payload.get('document', {}).get('name')}"
-        )
-    except Exception as e:
-        frappe.logger().error(f"send_single_event: Unexpected error: {str(e)}")
+	except requests.exceptions.Timeout:
+		frappe.logger().error(
+			f"send_single_event: Request timed out "
+			f"doctype={payload.get('document', {}).get('doctype')} "
+			f"name={payload.get('document', {}).get('name')}"
+		)
+		if log_id:
+			frappe.db.set_value("Observer Event Log", log_id, {
+				"status": "Failed",
+				"error_message": "Request timed out after 30s",
+			})
+			frappe.db.commit()
+	except requests.exceptions.ConnectionError:
+		frappe.logger().error(
+			f"send_single_event: Failed to connect to webhook "
+			f"doctype={payload.get('document', {}).get('doctype')} "
+			f"name={payload.get('document', {}).get('name')}"
+		)
+		if log_id:
+			frappe.db.set_value("Observer Event Log", log_id, {
+				"status": "Failed",
+				"error_message": "Connection error — could not reach webhook",
+			})
+			frappe.db.commit()
+	except Exception as e:
+		frappe.logger().error(f"send_single_event: Unexpected error: {str(e)}")
+		if log_id:
+			frappe.db.set_value("Observer Event Log", log_id, {
+				"status": "Failed",
+				"error_message": f"Unexpected error: {str(e)[:500]}",
+			})
+			frappe.db.commit()
