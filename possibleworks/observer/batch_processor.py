@@ -35,11 +35,11 @@ class BatchProcessor:
 		Main batch processing function.
 
 		Returns:
-		    {
-		        "status": "success" | "error",
-		        "events_processed": 150,
-		        "message": "..."
-		    }
+			{
+				"status": "success" | "error",
+				"events_processed": 150,
+				"message": "..."
+			}
 		"""
 		try:
 			url = SettingsHelper.get_webhook_url()
@@ -151,11 +151,11 @@ class BatchProcessor:
 		Send events to external webhook.
 
 		Args:
-		    webhook_url: External API endpoint
-		    events: List of event payloads (must already have _log_id stripped)
+			webhook_url: External API endpoint
+			events: List of event payloads (must already have _log_id stripped)
 
 		Returns:
-		    (success, sent_count, response_code, response_body, error_message)
+			(success, sent_count, response_code, response_body, error_message)
 		"""
 		try:
 			payload = {
@@ -212,7 +212,7 @@ class BatchProcessor:
 		Get current batch processor status.
 
 		Returns:
-		    Status information
+			Status information
 		"""
 		try:
 			queue_stats = RedisBufferService.get_queue_stats()
@@ -238,9 +238,9 @@ def process_event_batch():
 
 	Add to hooks.py:
 	scheduler_events = {
-	    "all": [
-	        "possibleworks.observer.batch_processor.process_event_batch"
-	    ]
+		"all": [
+			"possibleworks.observer.batch_processor.process_event_batch"
+		]
 	}
 	"""
 	result = BatchProcessor.process_batch()
