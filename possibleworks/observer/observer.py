@@ -177,6 +177,7 @@ class WorkflowEventObserver:
                             "status": "Dropped",
                             "error_message": "Redis push failed — event could not be queued",
                         })
+                        frappe.db.commit()
             return True
 
         except Exception as e:
