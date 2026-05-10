@@ -136,14 +136,27 @@ class WorkflowEventObserver:
                     )
                     _create_dropped_log(doc, event_type, "Immediate", "Could not build payload — check company / tenant_id configuration")
                     return False
-                log_name = _create_event_log(doc, event_type, "Immediate", "Sending", payload)
-                if log_name:
-                    payload["_log_id"] = log_name
-                frappe.enqueue(
-                    "possibleworks.observer.batch_processor.send_single_event",
-                    payload=payload,
-                    queue="short",
-                )
+                # Attach log metadata so the background job creates the OEL row
+                # inside its own transaction. Creating the row here (in the main
+                # request transaction) and then updating it in the worker races
+                # against the uncommitted INSERT under snapshot isolation →
+                # MariaDB error 1020. Worker-side creation eliminates the race.
+                payload["_log_meta"] = {
+                    "reference_doctype": doc.doctype,
+                    "reference_name": doc.name,
+                    "event_type": event_type,
+                    "delivery_mode": "Immediate",
+                    "tenant_id": payload.get("tenant_id") or "",
+                    "company": payload.get("company") or "",
+                    "triggered_by": frappe.session.user,
+                }
+                # frappe.enqueue(
+                #     "possibleworks.observer.batch_processor.send_single_event",
+                #     payload=payload,
+                #     queue="short",
+                # )
+                from possibleworks.observer.batch_processor import send_single_event
+                send_single_event(payload=payload)
                 frappe.logger().debug(
                     f"Observer: Event enqueued for {doc.doctype}/{doc.name} - {event_type}"
                 )
@@ -176,7 +189,7 @@ class WorkflowEventObserver:
                         frappe.db.set_value("Observer Event Log", log_name, {
                             "status": "Dropped",
                             "error_message": "Redis push failed — event could not be queued",
-                        })
+                        }, update_modified=False)
                         frappe.db.commit()
             return True
 

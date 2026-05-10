@@ -83,7 +83,7 @@ class BatchProcessor:
 						"status": "Sending",
 						"batch_id": batch_id,
 						"last_attempted_at": now,
-					})
+					}, update_modified=False)
 			if any(log_ids):
 				frappe.db.commit()
 
@@ -101,7 +101,7 @@ class BatchProcessor:
 							"sent_at": sent_at,
 							"response_code": response_code,
 							"response_body": (response_body or "")[:2000],
-						})
+						}, update_modified=False)
 				if any(log_ids):
 					frappe.db.commit()
 
@@ -126,7 +126,7 @@ class BatchProcessor:
 							"retry_count": current_retry + 1,
 							"last_attempted_at": now_datetime(),
 							"error_message": error_message or "Failed to send to webhook",
-						})
+						}, update_modified=False)
 				if any(log_ids):
 					frappe.db.commit()
 
@@ -252,10 +252,34 @@ def send_single_event(payload: dict):
 	"""
 	Frappe background job for immediate event delivery (IMMEDIATE_SEND_DOCTYPES only).
 
-	Strips _log_id from the payload before sending, then updates the linked
-	Observer Event Log row to Sent or Failed.
+	Creates the Observer Event Log row at the START of this job (not in the
+	observer hook) so INSERT and subsequent UPDATEs live in the same worker
+	transaction — eliminates the snapshot-isolation race (error 1020) that
+	occurred when the observer inserted the row mid-request and this job updated
+	it before the main transaction committed.
 	"""
-	log_id = payload.pop("_log_id", None)
+	import json
+	from frappe.utils import now_datetime
+
+	# Strip internal metadata fields before sending to webhook
+	log_id = payload.pop("_log_id", None)      # backward-compat: old jobs may carry this
+	log_meta = payload.pop("_log_meta", None)  # new format: metadata for log row creation
+
+	# Create the log row here, in this worker's own transaction.
+	if log_meta and not log_id:
+		try:
+			log = frappe.get_doc({
+				"doctype": "Observer Event Log",
+				"status": "Sending",
+				"payload": json.dumps(payload, default=str),
+				"queued_at": now_datetime(),
+				**log_meta,
+			})
+			log.insert(ignore_permissions=True)
+			log_id = log.name
+			frappe.db.commit()
+		except Exception as exc:
+			frappe.logger().error(f"send_single_event: Failed to create log row: {exc}")
 
 	try:
 		url = SettingsHelper.get_webhook_url()
@@ -273,13 +297,12 @@ def send_single_event(payload: dict):
 
 		if response.status_code in [200, 201, 202]:
 			if log_id:
-				from frappe.utils import now_datetime
 				frappe.db.set_value("Observer Event Log", log_id, {
 					"status": "Sent",
 					"sent_at": now_datetime(),
 					"response_code": response.status_code,
 					"response_body": response.text[:2000],
-				})
+				}, update_modified=False)
 				frappe.db.commit()
 		else:
 			frappe.logger().error(
@@ -292,7 +315,7 @@ def send_single_event(payload: dict):
 					"status": "Failed",
 					"response_code": response.status_code,
 					"error_message": f"Webhook returned {response.status_code}: {response.text[:500]}",
-				})
+				}, update_modified=False)
 				frappe.db.commit()
 
 	except requests.exceptions.Timeout:
@@ -305,7 +328,7 @@ def send_single_event(payload: dict):
 			frappe.db.set_value("Observer Event Log", log_id, {
 				"status": "Failed",
 				"error_message": "Request timed out after 30s",
-			})
+			}, update_modified=False)
 			frappe.db.commit()
 	except requests.exceptions.ConnectionError:
 		frappe.logger().error(
@@ -317,7 +340,7 @@ def send_single_event(payload: dict):
 			frappe.db.set_value("Observer Event Log", log_id, {
 				"status": "Failed",
 				"error_message": "Connection error — could not reach webhook",
-			})
+			}, update_modified=False)
 			frappe.db.commit()
 	except Exception as e:
 		frappe.logger().error(f"send_single_event: Unexpected error: {str(e)}")
@@ -325,5 +348,5 @@ def send_single_event(payload: dict):
 			frappe.db.set_value("Observer Event Log", log_id, {
 				"status": "Failed",
 				"error_message": f"Unexpected error: {str(e)[:500]}",
-			})
+			}, update_modified=False)
 			frappe.db.commit()
