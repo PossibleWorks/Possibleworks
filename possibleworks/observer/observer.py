@@ -150,13 +150,13 @@ class WorkflowEventObserver:
                     "company": payload.get("company") or "",
                     "triggered_by": frappe.session.user,
                 }
-                # frappe.enqueue(
-                #     "possibleworks.observer.batch_processor.send_single_event",
-                #     payload=payload,
-                #     queue="short",
-                # )
-                from possibleworks.observer.batch_processor import send_single_event
-                send_single_event(payload=payload)
+                frappe.enqueue(
+                    "possibleworks.observer.batch_processor.send_single_event",
+                    payload=payload,
+                    queue="short",
+                )
+                # from possibleworks.observer.batch_processor import send_single_event
+                # send_single_event(payload=payload)
                 frappe.logger().debug(
                     f"Observer: Event enqueued for {doc.doctype}/{doc.name} - {event_type}"
                 )
