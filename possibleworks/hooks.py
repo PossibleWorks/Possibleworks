@@ -89,7 +89,10 @@ scheduler_events = {
         "*/1 * * * *": [
             "possibleworks.observer.batch_processor.process_event_batch"
         ]
-    }
+    },
+    "daily": [
+        "possibleworks.observer.doctype.observer_event_log.observer_event_log.run_log_cleanup"
+    ],
 }
 
 # Fixtures: Custom Fields for these doctypes are synced via standard bench.
@@ -117,7 +120,6 @@ fixtures = [
             "AI Document Queue",
 			"Policy Configuration",
             "Possibleworks Settings",
-            "Observer Event Log"
         ]]],
     },
 ]

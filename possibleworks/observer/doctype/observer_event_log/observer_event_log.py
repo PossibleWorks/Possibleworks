@@ -48,3 +48,17 @@ class ObserverEventLog(Document):
 		frappe.logger().info(
 			f"ObserverEventLog: Cleared logs older than {days} days"
 		)
+
+
+def run_log_cleanup():
+	"""
+	Daily scheduler entry point.
+
+	Reads `auto_expire_logs` and `log_retention_days` from Possibleworks Settings
+	and delegates to `clear_old_logs`. Does nothing if auto-expire is disabled.
+	"""
+	auto_expire = frappe.db.get_single_value("Possibleworks Settings", "auto_expire_logs")
+	if not auto_expire:
+		return
+	days = frappe.db.get_single_value("Possibleworks Settings", "log_retention_days") or 30
+	ObserverEventLog.clear_old_logs(days=int(days))
