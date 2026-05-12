@@ -252,34 +252,25 @@ def send_single_event(payload: dict):
 	"""
 	Frappe background job for immediate event delivery (IMMEDIATE_SEND_DOCTYPES only).
 
-	Creates the Observer Event Log row at the START of this job (not in the
-	observer hook) so INSERT and subsequent UPDATEs live in the same worker
-	transaction — eliminates the snapshot-isolation race (error 1020) that
-	occurred when the observer inserted the row mid-request and this job updated
-	it before the main transaction committed.
+	The Observer Event Log row is created and committed by the observer before
+	this job is enqueued, so the worker finds an already-committed row and updates
+	it — no snapshot-isolation race (error 1020).
 	"""
-	import json
 	from frappe.utils import now_datetime
 
-	# Strip internal metadata fields before sending to webhook
-	log_id = payload.pop("_log_id", None)      # backward-compat: old jobs may carry this
-	log_meta = payload.pop("_log_meta", None)  # new format: metadata for log row creation
+	# Strip internal routing fields; log row was already created and committed by the observer.
+	log_id = payload.pop("_log_id", None)
 
-	# Create the log row here, in this worker's own transaction.
-	if log_meta and not log_id:
+	# Mark the row as Sending before the HTTP call.
+	if log_id:
 		try:
-			log = frappe.get_doc({
-				"doctype": "Observer Event Log",
+			frappe.db.set_value("Observer Event Log", log_id, {
 				"status": "Sending",
-				"payload": json.dumps(payload, default=str),
-				"queued_at": now_datetime(),
-				**log_meta,
-			})
-			log.insert(ignore_permissions=True)
-			log_id = log.name
+				"last_attempted_at": now_datetime(),
+			}, update_modified=False)
 			frappe.db.commit()
 		except Exception as exc:
-			frappe.logger().error(f"send_single_event: Failed to create log row: {exc}")
+			frappe.logger().error(f"send_single_event: Failed to update log row to Sending: {exc}")
 
 	try:
 		url = SettingsHelper.get_webhook_url()

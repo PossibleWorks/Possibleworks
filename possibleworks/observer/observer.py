@@ -136,27 +136,20 @@ class WorkflowEventObserver:
                     )
                     _create_dropped_log(doc, event_type, "Immediate", "Could not build payload — check company / tenant_id configuration")
                     return False
-                # Attach log metadata so the background job creates the OEL row
-                # inside its own transaction. Creating the row here (in the main
-                # request transaction) and then updating it in the worker races
-                # against the uncommitted INSERT under snapshot isolation →
-                # MariaDB error 1020. Worker-side creation eliminates the race.
-                payload["_log_meta"] = {
-                    "reference_doctype": doc.doctype,
-                    "reference_name": doc.name,
-                    "event_type": event_type,
-                    "delivery_mode": "Immediate",
-                    "tenant_id": payload.get("tenant_id") or "",
-                    "company": payload.get("company") or "",
-                    "triggered_by": frappe.session.user,
-                }
+                # Create the log row and commit it BEFORE enqueueing.
+                # This eliminates the snapshot-isolation race (error 1020): the worker
+                # updates an already-committed row instead of racing against an
+                # uncommitted INSERT from the main transaction.
+                log_name = _create_event_log(doc, event_type, "Immediate", "Queued", payload)
+                if log_name:
+                    payload["_log_id"] = log_name
+                    frappe.db.commit()
                 frappe.enqueue(
                     "possibleworks.observer.batch_processor.send_single_event",
                     payload=payload,
-                    queue="short",
+                    queue="long",
+                    timeout=300,
                 )
-                # from possibleworks.observer.batch_processor import send_single_event
-                # send_single_event(payload=payload)
                 frappe.logger().debug(
                     f"Observer: Event enqueued for {doc.doctype}/{doc.name} - {event_type}"
                 )
