@@ -56,6 +56,9 @@ doc_events = {
 	"Leave Application": {
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
 	},
+	"Employee": {
+		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
+	},
     "*": {
         "after_insert": "possibleworks.observer.observer.handle_workflow_event",
         "on_update": "possibleworks.observer.observer.handle_workflow_event",
