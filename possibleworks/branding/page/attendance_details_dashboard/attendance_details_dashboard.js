@@ -258,7 +258,7 @@ function _mountDashboard(mount) {
 	}
 
 	/* ── employee detail component ── */
-	function EmployeeDetail({ emp, records, lpCount, apCount, lpEntries, apEntries, onBack, onRefresh, date, toDate, empHolidays }) {
+	function EmployeeDetail({ emp, records, lpCount, apCount, lpEntries, apEntries, allLeaveEntries, onBack, onRefresh, date, toDate, empHolidays }) {
 
 		const [selectedDates, setSelectedDates] = useState({});
 		const [selectedApproveDates, setSelectedApproveDates] = useState({});
@@ -361,6 +361,9 @@ function _mountDashboard(mount) {
 
 		const openLeaveModal = () => {
 			const selDates = Object.keys(selectedDates).sort();
+			/* map each selected date to its attendance status (to detect Half Day) */
+			const dateStatusMap = {};
+			checkableRecords.forEach(r => { dateStatusMap[r.date] = r.status; });
 			if (!selDates.length) { frappe.msgprint("Please select at least one date from the table"); return; }
 
 			/* fetch which allocation period each selected date belongs to */
@@ -418,7 +421,7 @@ function _mountDashboard(mount) {
 							+ "background:" + (noAlloc ? "#fee2e2" : "#f8fafc") + ";border:1px solid "
 							+ (noAlloc ? "#fca5a5" : "#e2e8f0") + ";border-radius:6px;margin:3px'>"
 							+ "<input type='checkbox' " + (noAlloc ? "" : "checked") + " data-date='" + dt + "' style='width:14px;height:14px;accent-color:#4f46e5;cursor:pointer'/>"
-							+ "<span style='font-family:Space Mono,monospace'>" + dt + "</span>" + tag + "</label>";
+							+ "<span style='font-family:Space Mono,monospace'>" + dt + (dateStatusMap[dt]==="Half Day" ? " <span style='color:#854d0e;font-size:10px'>(½ day)</span>" : "") + "</span>" + tag + "</label>";
 					}).join("");
 
 					/* helper: single-period balance table */
@@ -488,7 +491,7 @@ function _mountDashboard(mount) {
 								+ "No leave allocation for the selected dates.</div>";
 							canSubmit = false;
 						} else {
-							const count = g.dates.length;
+							const count = g.dates.reduce((s, d) => s + (dateStatusMap[d] === "Half Day" ? 0.5 : 1), 0);
 							const bal = parseFloat((g.period.balances || {})[lt]);
 							if (isNaN(bal)) {
 								html = "<div style='padding:7px 12px;background:#fef3c7;color:#92400e;border-radius:6px;font-size:13px'>"
@@ -542,7 +545,9 @@ function _mountDashboard(mount) {
 									method:"possibleworks.branding.page.attendance_details_dashboard.attendance_details_dashboard.submit_leave_application",
 									args:{ employee:emp.id, employee_name:emp.name,
 										from_date:checked[idx], to_date:checked[idx],
-										leave_type:vals.leave_type, description:vals.reason||"" },
+										leave_type:vals.leave_type, description:vals.reason||"",
+										half_day: dateStatusMap[checked[idx]]==="Half Day" ? 1 : 0,
+										half_day_date: checked[idx] },
 									callback: () => { submitted++; submitNext(idx+1); },
 									error: () => { failed++; submitNext(idx+1); }
 								});
@@ -687,6 +692,7 @@ function _mountDashboard(mount) {
 						<td style=${monoTd}>—</td>
 						<td style=${tdStyle}><span style=${{ color:"#9ca3af", fontSize:12 }}>—</span></td>
 						<td style=${tdStyle}><span style=${{ color:"#9ca3af", fontSize:12 }}>—</span></td>
+						<td style=${tdStyle}><span style=${{color:"#16a34a",fontWeight:700,fontSize:12}}>Yes</span></td>
 					</tr>`;
 				}
 				/* check if this date is a holiday for the employee */
@@ -705,14 +711,14 @@ function _mountDashboard(mount) {
 						<td style=${tdStyle}>
 							<span style=${{ background: holBg, color: holFg, border:"1px solid " + holFg, borderRadius:4, padding:"2px 8px", fontSize:11, fontWeight:600 }}>${label}</span>
 						</td>
-						<td style=${monoTd} colspan="4"><span style=${{ color:"#d1d5db" }}>—</span></td>
+						<td style=${monoTd} colspan="5"><span style=${{ color:"#d1d5db" }}>—</span></td>
 					</tr>`;
 				}
 				return html`<tr key=${dateStr} style=${{ background:"#fafaf8", opacity:0.55 }}>
 					<td style=${tdStyle}></td>
 					<td style=${monoTd}>${dateStr}</td>
 					<td style=${tdStyle}><span style=${{ color:"#d1d5db", fontSize:12, fontStyle:"italic" }}>No Record</span></td>
-					<td style=${monoTd} colspan="4"><span style=${{ color:"#d1d5db" }}>—</span></td>
+					<td style=${monoTd} colspan="5"><span style=${{ color:"#d1d5db" }}>—</span></td>
 				</tr>`;
 			}
 
@@ -720,7 +726,8 @@ function _mountDashboard(mount) {
 			const hasLP = dateHasLP(r.date);
 			const hasAP = dateHasAP(r.date);
 			const isApprovable = hasLP || hasAP;
-			const canCheck = !!checkableStatuses[r.status] && !isApprovable;
+			const hasLeaveApplied = (allLeaveEntries||[]).some(l => r.date >= l.from && r.date <= l.to);
+			const canCheck = !!checkableStatuses[r.status] && !isApprovable && !hasLeaveApplied;
 			const checked = canCheck ? !!selectedDates[r.date] : (isApprovable ? !!selectedApproveDates[r.date] : false);
 			const onToggle = isApprovable ? () => toggleApproveDate(r.date) : (canCheck ? () => toggleDate(r.date) : null);
 			const cbCell = (canCheck || isApprovable)
@@ -737,16 +744,17 @@ function _mountDashboard(mount) {
 				<td style=${monoTd}>${r.checkout || "\u2014"}</td>
 				<td style=${tdStyle}>${yesNo(r.lateEntry, "#dc2626")}</td>
 				<td style=${tdStyle}>${yesNo(r.earlyExit, "#f59e0b")}</td>
+			${(()=>{ const _la=(allLeaveEntries||[]).find(l=>r.date>=l.from&&r.date<=l.to)||(apEntries||[]).find(a=>r.date>=a.from&&r.date<=a.to); return html`<td style=${tdStyle}>${_la?html`<span style=${{color:"#16a34a",fontWeight:700,fontSize:12}}>Yes</span>`:html`<span style=${{color:"#9ca3af",fontSize:12}}>No</span>`}</td>`; })()}
 			</tr>`;
 		});
 
 		const emptyRow = records.length === 0
-			? html`<tr><td colSpan="7" style=${{ padding:"30px", textAlign:"center", color:"#9ca3af" }}>No records found</td></tr>`
+			? html`<tr><td colSpan="8" style=${{ padding:"30px", textAlign:"center", color:"#9ca3af" }}>No records found</td></tr>`
 			: null;
 
 		const thStyle = { padding:"10px 14px", textAlign:"left", fontWeight:700, fontSize:11, textTransform:"uppercase", letterSpacing:1, color:"#6b7280", fontFamily:"'Space Mono',monospace", borderBottom:"2px solid #e5e7eb" };
 		const selectAllTh = html`<th style=${thStyle}><input type="checkbox" checked=${allChecked} onChange=${toggleAll} style=${cbStyle} /></th>`;
-		const headers = ["Date","Status","Check-in","Check-out","Late Entry","Early Exit"].map(h =>
+		const headers = ["Date","Status","Check-in","Check-out","Late Entry","Early Exit","Leave Applied"].map(h =>
 			html`<th key=${h} style=${thStyle}>${h}</th>`
 		);
 
@@ -953,15 +961,15 @@ function _mountDashboard(mount) {
 		const [attRequests,      setAttRequests]      = useState({});
 
 		/* ── fetch live data ── */
-		const fetchData = useCallback((keepEmployee) => {
-			setLoading(true);
+		const fetchData = useCallback((keepEmployee, silent=false) => {
+			if (!silent) setLoading(true);
 			if (!keepEmployee) setSelectedEmployee(null);
 
 			frappe.call({
 				method: "possibleworks.branding.page.attendance_details_dashboard.attendance_details_dashboard.get_attendance_data",
 				args: { from_date: fromDate, to_date: toDate },
 				callback(r) {
-					if (!r.message) { setLoading(false); return; }
+					if (!r.message) { if (!silent) setLoading(false); return; }
 
 					// build employee id → meta map
 					const empMap = {};
@@ -1023,7 +1031,7 @@ function _mountDashboard(mount) {
 					setEmployeeHolidays(holidayData);
 					setLeaveRequests(lpData);
 					setAttRequests(apData);
-					setLoading(false);
+					if (!silent) setLoading(false);
 				},
 			});
 		}, [fromDate, toDate]);
@@ -1042,7 +1050,10 @@ function _mountDashboard(mount) {
 			if (filterBranch      && r.branch      !== filterBranch)      return false;
 			if (filterShift       && r.shift       !== filterShift)       return false;
 			if (filterDesignation && r.designation !== filterDesignation) return false;
-			if (filterStatus.length && !filterStatus.includes(r.status)) return false;
+			if (filterStatus.length) {
+				const stdStatuses = filterStatus.filter(s => s !== "Leave Pending" && s !== "Attendance Request Pending");
+				if (stdStatuses.length && !stdStatuses.includes(r.status)) return false;
+			}
 			if (filterEmployee    && r.employee    !== filterEmployee)    return false;
 			if (searchQuery) {
 				const q = searchQuery.toLowerCase();
@@ -1136,6 +1147,9 @@ function _mountDashboard(mount) {
 			return filteredAttendance.filter(r=>r.employee===selectedEmployee).sort((a,b)=>a.date.localeCompare(b.date));
 		}, [selectedEmployee, filteredAttendance]);
 
+		/* reset daily page to 1 whenever filters change the employee list */
+		useEffect(() => { setDailyPage(1); }, [filterDept, filterBranch, filterShift, filterDesignation, filterStatus, filterEmployee, searchQuery, fromDate, toDate]);
+
 		const clearFilters = () => {
 			setFilterDept(""); setFilterBranch(""); setFilterShift("");
 			setFilterDesignation(""); setFilterStatus([]); setFilterEmployee(""); setSearchQuery("");
@@ -1190,7 +1204,7 @@ function _mountDashboard(mount) {
 							<${CustomSelect} value=${filterDesignation} onChange=${setFilterDesignation} placeholder="All Designations"
 								options=${[{value:"",label:"All Designations"},...designations.map(d=>({value:d,label:d}))]} />
 							<${MultiSelect} values=${filterStatus} onChange=${setFilterStatus} placeholder="All Status"
-								options=${STATUSES.map(s=>({value:s,label:s}))} />
+								options=${[...STATUSES.map(s=>({value:s,label:s})), {value:"Leave Pending",label:"Leave Pending"}, {value:"Attendance Request Pending",label:"Attendance Request Pending"}]} />
 						</div>
 					</div>
 
@@ -1273,7 +1287,7 @@ function _mountDashboard(mount) {
 								<table style=${{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
 									<thead>
 										<tr style=${{ background:"#f9fafb" }}>
-											${[["name","Employee"],["department","Dept"],["designation","Role"],["Present","P"],["Absent","A"],["Half Day","HD"],["On Leave","L"],["Work From Home","WFH"],["totalWorkingDays","Work Days"],["total","Total"]].map(([field,label]) => html`
+											${[["name","Employee"],["department","Dept"],["designation","Role"],["Present","P"],["Absent","A"],["Half Day","HD"],["On Leave","L"],["Work From Home","WFH"],["totalWorkingDays","Work Days"],["total","Total"],["leaveApplied","Leave Applied"]].map(([field,label]) => html`
 												<th key=${field} onClick=${()=>toggleSort(field)} style=${thStyle}>
 													${label} ${sortField===field?(sortDir==="asc"?"↑":"↓"):""}
 												</th>
@@ -1302,7 +1316,7 @@ function _mountDashboard(mount) {
 												${STATUSES.map(s => html`<td key=${s} style=${{ padding:"12px 14px", borderBottom:"1px solid #f3f4f6", textAlign:"center" }}>
 													<span style=${{ background:STATUS_COLORS[s].bg, color:STATUS_COLORS[s].fg, padding:"3px 10px", borderRadius:6, fontWeight:700, fontSize:12, fontFamily:"'Space Mono',monospace" }}>${emp[s]}</span>
 												</td>`)}
-												<td style=${{ padding:"12px 14px", borderBottom:"1px solid #f3f4f6", textAlign:"center" }}><span style=${{ background:"#eff6ff", color:"#1d4ed8", padding:"3px 10px", borderRadius:6, fontWeight:700, fontSize:12, fontFamily:"'Space Mono',monospace" }}>${emp.totalWorkingDays}</span></td><td style=${{ padding:"12px 14px", borderBottom:"1px solid #f3f4f6", fontWeight:700, fontFamily:"'Space Mono',monospace", textAlign:"center" }}>${emp.total}</td>
+												<td style=${{ padding:"12px 14px", borderBottom:"1px solid #f3f4f6", textAlign:"center" }}><span style=${{ background:"#eff6ff", color:"#1d4ed8", padding:"3px 10px", borderRadius:6, fontWeight:700, fontSize:12, fontFamily:"'Space Mono',monospace" }}>${emp.totalWorkingDays}</span></td><td style=${{ padding:"12px 14px", borderBottom:"1px solid #f3f4f6", fontWeight:700, fontFamily:"'Space Mono',monospace", textAlign:"center" }}>${emp.total}</td>${(()=>{ const _hasLeave=(leaveRequests[emp.id]||[]).length>0; return html`<td style=${{ padding:"12px 14px", borderBottom:"1px solid #f3f4f6", textAlign:"center" }}><span style=${{ background:_hasLeave?"#dcfce7":"#f3f4f6", color:_hasLeave?"#166534":"#6b7280", padding:"3px 10px", borderRadius:6, fontWeight:700, fontSize:12 }}>${_hasLeave?"Yes":"No"}</span></td>`; })()}
 											</tr>
 										`)}
 									</tbody>
@@ -1318,7 +1332,7 @@ function _mountDashboard(mount) {
 					${activeTab==="employees" && selectedEmployee && (() => {
 						const emp = employeeSummaries.find(e=>e.id===selectedEmployee);
 						if (!emp) return null;
-						const lpEntries=(leaveRequests[emp.id]||[]).filter(l=>(l.status||"Open")==="Open"); const apEntries=(attRequests[emp.id]||[]).filter(a=>a.docstatus===0); return html`<${EmployeeDetail} emp=${emp} records=${selectedEmpRecords} lpCount=${lpEntries.reduce((s,l)=>{ const a=new Date(l.from+"T00:00:00"),b=new Date(l.to+"T00:00:00"); return s+Math.round((b-a)/86400000)+1; },0)} apCount=${apEntries.reduce((s,a)=>{ const x=new Date(a.from+"T00:00:00"),y=new Date(a.to+"T00:00:00"); return s+Math.round((y-x)/86400000)+1; },0)} lpEntries=${lpEntries} apEntries=${apEntries} onBack=${()=>{ setSelectedEmployee(null); setActiveTab("daily"); }} onRefresh=${()=>fetchData(true)} date=${fromDate} toDate=${toDate} empHolidays=${employeeHolidays[emp.id]||{}} />`;
+						const lpEntries=(leaveRequests[emp.id]||[]).filter(l=>(l.status||"Open")==="Open"); const apEntries=(attRequests[emp.id]||[]).filter(a=>a.docstatus===0); return html`<${EmployeeDetail} emp=${emp} records=${selectedEmpRecords} lpCount=${lpEntries.reduce((s,l)=>{ const a=new Date(l.from+"T00:00:00"),b=new Date(l.to+"T00:00:00"); return s+Math.round((b-a)/86400000)+1; },0)} apCount=${apEntries.reduce((s,a)=>{ const x=new Date(a.from+"T00:00:00"),y=new Date(a.to+"T00:00:00"); return s+Math.round((y-x)/86400000)+1; },0)} lpEntries=${lpEntries} apEntries=${apEntries} allLeaveEntries=${leaveRequests[emp.id]||[]} onBack=${()=>{ setSelectedEmployee(null); setActiveTab("daily"); }} onRefresh=${()=>fetchData(true, true)} date=${fromDate} toDate=${toDate} empHolidays=${employeeHolidays[emp.id]||{}} />`;
 					})()}
 
 					<!-- ══ DAILY VIEW ══ -->
@@ -1378,7 +1392,7 @@ function _mountDashboard(mount) {
 													const isAP = !!apEntry && apEntry.docstatus === 0;
 													const isWO = isHoliday && holInfo.weekly_off;
 													const cellBg = isWO?"#f3f4f6":isLP?"#ffedd5":isAP?"#cffafe":"transparent";
-													return html`<td key=${i} style=${{ padding:"6px 2px", borderBottom:"1px solid #f3f4f6", textAlign:"center", background:cellBg, cursor:"pointer", opacity:filterStatus.length && !filterStatus.includes(status)?0.2:1, transition:"opacity 0.15s" }}>
+													return html`<td key=${i} style=${{ padding:"6px 2px", borderBottom:"1px solid #f3f4f6", textAlign:"center", background:cellBg, cursor:"pointer", opacity:(() => { if (!filterStatus.length) return 1; const _std = filterStatus.filter(s => s !== "Leave Pending" && s !== "Attendance Request Pending"); const _wLP = filterStatus.includes("Leave Pending"); const _wAP = filterStatus.includes("Attendance Request Pending"); if (_std.length && _std.includes(status)) return 1; if (_wLP && isLP) return 1; if (_wAP && isAP) return 1; return 0.2; })(), transition:"opacity 0.15s" }}>
 														${isLP
 															? html`<span title=${"Leave Pending" + (lpEntry.leave_type?" ("+lpEntry.leave_type+")":"")} style=${{ display:"inline-block", width:24, height:24, lineHeight:"24px", borderRadius:6, background:"#fed7aa", color:"#9a3412", fontWeight:700, fontSize:10, fontFamily:"'Space Mono',monospace" }}>LP</span>`
 															: isLA
