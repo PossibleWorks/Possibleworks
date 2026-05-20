@@ -38,6 +38,7 @@ doctype_list_js = {
 	"Quotation": "public/js/ap_invoice/ai_document_list.js",
 	"Delivery Note": "public/js/ap_invoice/ai_document_list.js",
 	"AI Document Queue": "ap_invoice_processing/doctype/ai_document_queue/ai_document_queue_list.js",
+	"Observer Event Log": "observer/doctype/observer_event_log/observer_event_log_list.js",
 }
 
 after_install = "possibleworks.setup.after_install.set_default_branding"
@@ -88,7 +89,10 @@ scheduler_events = {
         "*/1 * * * *": [
             "possibleworks.observer.batch_processor.process_event_batch"
         ]
-    }
+    },
+    "daily": [
+        "possibleworks.observer.doctype.observer_event_log.observer_event_log.run_log_cleanup"
+    ],
 }
 
 # Fixtures: Custom Fields for these doctypes are synced via standard bench.
@@ -115,7 +119,7 @@ fixtures = [
             "AI Document Extraction Log",
             "AI Document Queue",
 			"Policy Configuration",
-            "Possibleworks Settings"
+            "Possibleworks Settings",
         ]]],
     },
 ]

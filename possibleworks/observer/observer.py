@@ -134,11 +134,21 @@ class WorkflowEventObserver:
                     frappe.logger().warning(
                         f"Observer: Failed to build simple payload for {doc.doctype}/{doc.name}"
                     )
+                    _create_dropped_log(doc, event_type, "Immediate", "Could not build payload — check company / tenant_id configuration")
                     return False
+                # Create the log row and commit it BEFORE enqueueing.
+                # This eliminates the snapshot-isolation race (error 1020): the worker
+                # updates an already-committed row instead of racing against an
+                # uncommitted INSERT from the main transaction.
+                log_name = _create_event_log(doc, event_type, "Immediate", "Queued", payload)
+                if log_name:
+                    payload["_log_id"] = log_name
+                    frappe.db.commit()
                 frappe.enqueue(
                     "possibleworks.observer.batch_processor.send_single_event",
                     payload=payload,
-                    queue="short",
+                    queue="long",
+                    timeout=300,
                 )
                 frappe.logger().debug(
                     f"Observer: Event enqueued for {doc.doctype}/{doc.name} - {event_type}"
@@ -154,7 +164,11 @@ class WorkflowEventObserver:
                     frappe.logger().warning(
                         f"Observer: Failed to build payload for {doc.doctype}/{doc.name}"
                     )
+                    _create_dropped_log(doc, event_type, "Batch", "Could not build payload — check company / tenant_id configuration")
                     return False
+                log_name = _create_event_log(doc, event_type, "Batch", "Queued", payload)
+                if log_name:
+                    payload["_log_id"] = log_name
                 success = RedisBufferService.push_event(payload)
                 if success:
                     frappe.logger().debug(
@@ -164,6 +178,12 @@ class WorkflowEventObserver:
                     frappe.logger().warning(
                         f"Observer: Failed to queue event for {doc.doctype}/{doc.name}"
                     )
+                    if log_name:
+                        frappe.db.set_value("Observer Event Log", log_name, {
+                            "status": "Dropped",
+                            "error_message": "Redis push failed — event could not be queued",
+                        }, update_modified=False)
+                        frappe.db.commit()
             return True
 
         except Exception as e:
@@ -212,6 +232,60 @@ class WorkflowEventObserver:
                 f"_state_changed error for {doc.doctype}/{doc.name}: {str(e)}"
             )
             return False
+
+def _create_event_log(doc: Any, event_type: str, delivery_mode: str, status: str, payload: dict) -> "str | None":
+	"""
+	Insert an Observer Event Log row and return its name.
+
+	Returns None if the insert fails — observer must never break doc saves.
+	Call this BEFORE pushing to Redis so the returned name can be embedded
+	in the payload as '_log_id' for the batch processor to look up later.
+	"""
+	try:
+		import json
+		from frappe.utils import now_datetime
+		log = frappe.get_doc({
+			"doctype": "Observer Event Log",
+			"reference_doctype": doc.doctype,
+			"reference_name": doc.name,
+			"event_type": event_type,
+			"delivery_mode": delivery_mode,
+			"status": status,
+			"tenant_id": payload.get("tenant_id") or "",
+			"company": payload.get("company") or "",
+			"triggered_by": frappe.session.user,
+			"payload": json.dumps(payload, default=str),
+			"queued_at": now_datetime(),
+		})
+		log.insert(ignore_permissions=True)
+		return log.name
+	except Exception as exc:
+		frappe.logger().error(f"Observer: Failed to create event log: {exc}")
+		return None
+
+
+def _create_dropped_log(doc: Any, event_type: str, delivery_mode: str, error_message: str) -> None:
+	"""
+	Insert a Dropped Observer Event Log row (no payload — event was blocked before building).
+	Failures are swallowed — log creation must never break doc saves.
+	"""
+	try:
+		from frappe.utils import now_datetime
+		log = frappe.get_doc({
+			"doctype": "Observer Event Log",
+			"reference_doctype": doc.doctype,
+			"reference_name": doc.name,
+			"event_type": event_type,
+			"delivery_mode": delivery_mode,
+			"status": "Dropped",
+			"triggered_by": frappe.session.user,
+			"error_message": error_message,
+			"queued_at": now_datetime(),
+		})
+		log.insert(ignore_permissions=True)
+	except Exception as exc:
+		frappe.logger().error(f"Observer: Failed to create dropped log: {exc}")
+
 
 # ============================================================================
 # Hook functions - these are called by Frappe
