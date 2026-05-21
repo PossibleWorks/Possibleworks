@@ -89,7 +89,10 @@ scheduler_events = {
     "cron": {
         "*/1 * * * *": [
             "possibleworks.observer.batch_processor.process_event_batch"
-        ]
+        ],
+        "30 23 * * *": [
+            "possibleworks.attendance_scheduler.mark_negative_attendance"
+        ],
     },
     "daily": [
         "possibleworks.observer.doctype.observer_event_log.observer_event_log.run_log_cleanup"
