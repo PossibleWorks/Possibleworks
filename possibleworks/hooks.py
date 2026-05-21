@@ -72,6 +72,7 @@ doc_events = {
 }
 
 override_doctype_class = {
+	"Shift Type": "possibleworks.shift_type.PossibleWorksShiftType",
 	"Compensatory Leave Request": "possibleworks.compensatory_leave_request.PossibleWorksCompensatoryLeaveRequest",
 	"AI Document Processor Settings": "possibleworks.ap_invoice_processing.doctype.ai_document_processor_settings.ai_document_processor_settings.AIDocumentProcessorSettings",
 	"AI Document Processor Supported DocType": "possibleworks.ap_invoice_processing.doctype.ai_document_processor_supported_doctype.ai_document_processor_supported_doctype.AIDocumentProcessorSupportedDocType",
@@ -88,7 +89,10 @@ scheduler_events = {
     "cron": {
         "*/1 * * * *": [
             "possibleworks.observer.batch_processor.process_event_batch"
-        ]
+        ],
+        "30 23 * * *": [
+            "possibleworks.attendance_scheduler.mark_negative_attendance"
+        ],
     },
     "daily": [
         "possibleworks.observer.doctype.observer_event_log.observer_event_log.run_log_cleanup"
@@ -101,7 +105,7 @@ scheduler_events = {
 # Then commit fixtures/custom_field.json. Other sites get them via bench migrate.
 # hooks.py
 
-fixture_doctypes_with_custom_fields = ["Leave Type", "Leave Application", "Payroll Period"]
+fixture_doctypes_with_custom_fields = ["Leave Type", "Leave Application", "Payroll Period" , "Employee"]
 
 fixtures = [
     # Your existing custom fields
