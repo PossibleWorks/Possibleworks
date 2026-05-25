@@ -87,13 +87,13 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 			if "only present for Half Day" in msg:
 				frappe.message_log.pop()
 				frappe.throw(
-					_("You cannot apply full day compensatory leave request because attendance is marked as Half Day.")
+					_("You cannot apply full day compensatory request because attendance is marked as Half Day.")
 				)
 			# HRMS: "You are not present all day(s)..." → custom message
 			elif "not present all day" in msg:
 				frappe.message_log.pop()
 				frappe.throw(
-					_("Compensatory leave request is not applicable for the selected date(s) due to no attendance record.")
+					_("Compensatory request is not applicable for the selected date(s) due to no attendance record.")
 				)
 			raise
 
@@ -108,14 +108,14 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 				frappe.message_log.pop()
 				if date_diff(self.work_end_date, self.work_from_date):
 					frappe.throw(
-						_("You cannot apply for compensatory leave request as {0} to {1} are not holidays").format(
+						_("You cannot apply for compensatory request as {0} to {1} are not holidays").format(
 							frappe.bold(frappe.format(self.work_from_date, {"fieldtype": "Date"})),
 							frappe.bold(frappe.format(self.work_end_date, {"fieldtype": "Date"})),
 						)
 					)
 				else:
 					frappe.throw(
-						_("You cannot apply for compensatory leave request as {0} is not a holiday").format(
+						_("You cannot apply for compensatory request as {0} is not a holiday").format(
 							frappe.bold(frappe.format(self.work_from_date, {"fieldtype": "Date"}))
 						)
 					)
@@ -168,7 +168,7 @@ class PossibleWorksCompensatoryLeaveRequest(CompensatoryLeaveRequest):
 			if working_hours < min_hours:
 				frappe.throw(
 					_(
-						"{0} Compensatory Off requires a minimum of {1} working hour(s). "
+						"{0} Compensatory request requires a minimum of {1} working hour(s). "
 						"Attendance on {2} shows {3} working hour(s)."
 					).format(
 						comp_off_type,
