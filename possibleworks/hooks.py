@@ -105,7 +105,7 @@ scheduler_events = {
 # Then commit fixtures/custom_field.json. Other sites get them via bench migrate.
 # hooks.py
 
-fixture_doctypes_with_custom_fields = ["Leave Type", "Leave Application", "Payroll Period" , "Employee"]
+fixture_doctypes_with_custom_fields = ["Leave Type", "Leave Application", "Payroll Period" , "Employee","Shift Location"]
 
 fixtures = [
     # Your existing custom fields
@@ -124,6 +124,7 @@ fixtures = [
             "AI Document Queue",
 			"Policy Configuration",
             "Possibleworks Settings",
+            "Shift Location Zone"
         ]]],
     },
 ]
