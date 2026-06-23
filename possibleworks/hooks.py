@@ -56,6 +56,7 @@ website_context = {
 doc_events = {
 	"Leave Application": {
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
+		"on_cancel": "possibleworks.leave_application.reconstruct_attendance_on_leave_cancel",
 	},
 	"Employee": {
 		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
