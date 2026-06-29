@@ -56,6 +56,7 @@ website_context = {
 doc_events = {
 	"Leave Application": {
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
+		"on_cancel": "possibleworks.leave_application.reconstruct_attendance_on_leave_cancel",
 	},
 	"Employee": {
 		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
@@ -105,7 +106,7 @@ scheduler_events = {
 # Then commit fixtures/custom_field.json. Other sites get them via bench migrate.
 # hooks.py
 
-fixture_doctypes_with_custom_fields = ["Leave Type", "Leave Application", "Payroll Period" , "Employee"]
+fixture_doctypes_with_custom_fields = ["Leave Type", "Leave Application", "Payroll Period" , "Employee","Shift Location"]
 
 fixtures = [
     # Your existing custom fields
@@ -124,6 +125,7 @@ fixtures = [
             "AI Document Queue",
 			"Policy Configuration",
             "Possibleworks Settings",
+            "Shift Location Zone"
         ]]],
     },
 ]
