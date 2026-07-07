@@ -21,6 +21,7 @@ IMMEDIATE_SEND_DOCTYPES = [
     "Purchase Invoice",
     "Payment Request",
     "Payment Entry",
+    "Expense Claim",
     "Leave Application",
     "Attendance Request",
     "Compensatory Leave Request",
