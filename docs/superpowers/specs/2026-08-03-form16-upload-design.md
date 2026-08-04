@@ -48,7 +48,7 @@ Original design used a single `Attach` field (one file per record). Revised to a
 
 | Field | Type | Notes |
 |---|---|---|
-| `document_type` | Data | optional label, e.g. "Part A", "Part B", "Employer 1 copy" |
+| `document_type` | Data | optional label, e.g. "Part A", "Part B", "Employer 1 copy"; has a `placeholder` + `description` in the grid since it's a blank free-text box otherwise |
 | `attachment` | Attach | required; **must be uploaded as a private file** |
 | `remarks` | Small Text | optional |
 

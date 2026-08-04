@@ -65,11 +65,9 @@
   },
   {
    "fieldname": "section_break_1",
-   "fieldtype": "Section Break",
-   "label": "Documents"
+   "fieldtype": "Section Break"
   },
   {
-   "description": "Each row is uploaded as a private file; only visible to this employee and HR roles.",
    "fieldname": "documents",
    "fieldtype": "Table",
    "label": "Documents",

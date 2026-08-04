@@ -12,10 +12,12 @@
  "fields": [
   {
    "columns": 3,
+   "description": "Optional label to tell documents apart when a record has more than one file.",
    "fieldname": "document_type",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Document Type"
+   "label": "Document Type",
+   "placeholder": "e.g. Part A, Part B, Employer 1 copy"
   },
   {
    "columns": 6,
