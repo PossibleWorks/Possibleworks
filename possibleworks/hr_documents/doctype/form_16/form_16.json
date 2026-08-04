@@ -1,0 +1,154 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 0,
+ "autoname": "HR-FORM16-.YYYY.-.#####",
+ "creation": "2026-08-04 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "column_break_1",
+  "payroll_period",
+  "company",
+  "amended_from",
+  "section_break_1",
+  "documents"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "payroll_period",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Payroll Period",
+   "options": "Payroll Period",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "employee.company",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Form 16",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break",
+   "label": "Documents"
+  },
+  {
+   "description": "Each row is uploaded as a private file; only visible to this employee and HR roles.",
+   "fieldname": "documents",
+   "fieldtype": "Table",
+   "label": "Documents",
+   "options": "Form 16 Document",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-08-04 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "HR Documents",
+ "name": "Form 16",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR User",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Employee",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "employee_name,payroll_period",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "employee_name",
+ "track_changes": 1
+}
