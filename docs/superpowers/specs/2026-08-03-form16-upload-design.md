@@ -87,8 +87,8 @@ Once each row's file is uploaded as private, opening the Form 16 record and clic
 
 Since the actual consumer here is a headless client authenticating via API key/secret (not a browser session), three whitelisted methods are added in `possibleworks/hr_documents/api.py`. Because a record can now hold N documents, fetching one is a two-step lookup (list the record, then list/download its documents) rather than a single call:
 
-1. **`list_form16(employee=None)`**
-   Returns submitted (`docstatus=1`) Form 16 records visible to the caller: `name`, `employee`, `employee_name`, `payroll_period`, `creation`. Built on `frappe.get_list`, which already applies User Permission filtering — an employee-scoped API key only ever sees its own records regardless of the `employee` argument; an HR-role API key sees everyone's.
+1. **`list_form16(employee=None, payroll_period=None)`**
+   Returns submitted (`docstatus=1`) Form 16 records visible to the caller: `name`, `employee`, `employee_name`, `payroll_period`, `creation`. Built on `frappe.get_list`, which already applies User Permission filtering — an employee-scoped API key only ever sees its own records regardless of the `employee` argument; an HR-role API key sees everyone's. The optional `payroll_period` filter lets a caller that already knows both the employee and the period (e.g. the `pw-server-v3` proxy below) resolve directly to the one matching record, since a record is unique per employee + payroll period.
 
 2. **`list_form16_documents(name)`**
    `doc.check_permission("read")` then returns each child row's `row_name` (the child doc's own `name`, needed to download it), `document_type`, and `file_name`.

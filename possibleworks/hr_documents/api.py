@@ -6,7 +6,7 @@ from frappe import _
 
 
 @frappe.whitelist()
-def list_form16(employee=None):
+def list_form16(employee=None, payroll_period=None):
 	"""Return submitted Form 16 records visible to the calling user.
 
 	Scoping is handled by frappe.get_list's user-permission filtering: an
@@ -17,6 +17,8 @@ def list_form16(employee=None):
 	filters = {"docstatus": 1}
 	if employee:
 		filters["employee"] = employee
+	if payroll_period:
+		filters["payroll_period"] = payroll_period
 
 	return frappe.get_list(
 		"Form 16",
