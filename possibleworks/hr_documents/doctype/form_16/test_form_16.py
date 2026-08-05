@@ -36,8 +36,6 @@ def create_payroll_period(name=PAYROLL_PERIOD_NAME, start_date=PAYROLL_PERIOD_ST
 
 
 def make_attachment(is_private=1, content=None, filename="form16.pdf"):
-	"""Create a File not yet attached to any document, the way Desk uploads a
-	value for an Attach field before the parent row has a name."""
 	if content is None:
 		# vary content so repeated calls don't just return the same deduped File
 		content = f"%PDF-1.4 dummy form16 content {frappe.generate_hash(length=8)}".encode()
@@ -103,8 +101,6 @@ class TestForm16(IntegrationTestCase):
 
 		self.assertEqual(len(form16.documents), 2)
 
-		# any number of documents is fine within one record, but a second
-		# record for the same employee + payroll period is still blocked
 		duplicate = self.make_form16()
 		self.assertRaises(DuplicateDeclarationError, duplicate.insert)
 

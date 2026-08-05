@@ -7,13 +7,6 @@ from frappe import _
 
 @frappe.whitelist()
 def list_form16(employee=None, payroll_period=None):
-	"""Return submitted Form 16 records visible to the calling user.
-
-	Scoping is handled by frappe.get_list's user-permission filtering: an
-	employee-scoped caller (session or API key) only ever sees their own
-	records regardless of the `employee` argument; an HR-role caller sees
-	everyone's.
-	"""
 	filters = {"docstatus": 1}
 	if employee:
 		filters["employee"] = employee
@@ -30,11 +23,6 @@ def list_form16(employee=None, payroll_period=None):
 
 @frappe.whitelist()
 def list_form16_documents(name):
-	"""List the documents attached to a single Form 16 record.
-
-	`doc.check_permission("read")` enforces the same scoping as `list_form16` -
-	an employee can only list documents on their own record.
-	"""
 	doc = frappe.get_doc("Form 16", name)
 	doc.check_permission("read")
 
@@ -51,12 +39,6 @@ def list_form16_documents(name):
 
 @frappe.whitelist()
 def download_form16_document(name, row_name):
-	"""Stream a single document row's attachment back to an authenticated caller.
-
-	`doc.check_permission("read")` enforces the scoping - not the `name`/`row_name`
-	arguments - so a caller cannot download another employee's document by
-	guessing/passing a different name, even with a valid API key.
-	"""
 	doc = frappe.get_doc("Form 16", name)
 	doc.check_permission("read")
 
