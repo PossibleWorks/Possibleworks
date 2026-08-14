@@ -2,3 +2,5 @@
 
 [post_model_sync]
 possibleworks.patches.v1_1.seed_ai_document_processor_supported_doctypes
+possibleworks.patches.v1_1.create_employee_letter_section
+possibleworks.patches.v1_1.seed_employee_letter_templates

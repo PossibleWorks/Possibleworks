@@ -27,6 +27,15 @@ doctype_js = {
 	"Delivery Note": "public/js/ap_invoice/ai_document_form.js",
 	"AI Document Queue": "ap_invoice_processing/doctype/ai_document_queue/ai_document_queue.js",
 	"AI Document Processor Settings": "ap_invoice_processing/doctype/ai_document_processor_settings/ai_document_processor_settings.js",
+	"Employee": "public/js/employee/employee_letters.js",
+}
+
+# Jinja methods exposed to print formats / templates (Employee letters)
+jinja = {
+	"methods": [
+		"possibleworks.hr_documents.letters.utils.get_letter_context",
+		"possibleworks.hr_documents.letters.utils.get_employee_tenure_text",
+	],
 }
 
 doctype_list_js = {
