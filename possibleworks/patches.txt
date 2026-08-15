@@ -4,3 +4,7 @@
 possibleworks.patches.v1_1.seed_ai_document_processor_supported_doctypes
 possibleworks.patches.v1_1.create_employee_letter_section
 possibleworks.patches.v1_1.seed_employee_letter_templates
+possibleworks.patches.v1_2.create_onboarding_employee_custom_fields
+possibleworks.patches.v1_2.seed_onboarding_document_types
+possibleworks.patches.v1_3.migrate_document_types_to_template
+possibleworks.patches.v1_4.create_onboarding_portal_role

@@ -19,6 +19,24 @@ PAYROLL_PERIOD_END = "2022-12-31"
 EMPLOYEE_1 = "employee@form16.test"
 EMPLOYEE_2 = "employee1@form16.test"
 
+# These tests build their own fixtures against the site's real masters. Left to itself,
+# IntegrationTestCase recursively creates test records for every Link target, which on a
+# populated site collides with real data -- concretely, `_Test Fiscal Year 2025` overlaps
+# the live fiscal year and aborts the whole module before a single test runs.
+IGNORE_TEST_RECORD_DEPENDENCIES = [
+	"Company",
+	"Employee",
+	"Payroll Period",
+	"Fiscal Year",
+	"Department",
+	"Designation",
+	"Branch",
+	"Gender",
+	"Employment Type",
+	"Holiday List",
+	"User",
+]
+
 
 def create_payroll_period(name=PAYROLL_PERIOD_NAME, start_date=PAYROLL_PERIOD_START, end_date=PAYROLL_PERIOD_END):
 	if frappe.db.exists("Payroll Period", name):
@@ -35,12 +53,75 @@ def create_payroll_period(name=PAYROLL_PERIOD_NAME, start_date=PAYROLL_PERIOD_ST
 	).insert()
 
 
+def make_pdf(tag: bytes) -> bytes:
+	"""Build a minimal but genuinely parseable PDF.
+
+	It has to be real: frappe runs every uploaded PDF through
+	`frappe.utils.pdf.pdf_contains_js` to block embedded JavaScript, and dummy bytes
+	raise `pypdf.errors.PdfStreamError` before the test ever gets to its assertions.
+	`tag` goes in a header comment so each call produces distinct content (see
+	`make_attachment`) while the xref offsets below stay correct.
+	"""
+	out = b"%PDF-1.4\n%" + tag + b"\n"
+	offsets = []
+	for obj in (
+		b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+		b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+		b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>\nendobj\n",
+	):
+		offsets.append(len(out))
+		out += obj
+
+	xref_at = len(out)
+	out += b"xref\n0 4\n0000000000 65535 f \n"
+	for offset in offsets:
+		out += b"%010d 00000 n \n" % offset
+	out += b"trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref_at
+	return out
+
+
 def make_attachment(is_private=1, content=None, filename="form16.pdf"):
 	if content is None:
 		# vary content so repeated calls don't just return the same deduped File
-		content = f"%PDF-1.4 dummy form16 content {frappe.generate_hash(length=8)}".encode()
+		content = make_pdf(frappe.generate_hash(length=8).encode())
 	file_doc = save_file(filename, content, None, None, is_private=is_private)
 	return file_doc.file_url
+
+
+def make_form16_employee(user, **kwargs):
+	"""Create a test Employee that satisfies whatever THIS site marks as mandatory.
+
+	erpnext's `make_employee` only fills the stock required fields, but a site can add
+	its own via Custom Field or Property Setter -- `hw-hris`, for instance, makes
+	`employee_number` and `reports_to` mandatory. Read the live meta instead of
+	hardcoding, so this suite works on a customised site and a vanilla one alike.
+	"""
+	meta = frappe.get_meta("Employee")
+	extra = {}
+
+	employee_number = meta.get_field("employee_number")
+	if employee_number and employee_number.reqd:
+		extra["employee_number"] = f"F16-{frappe.generate_hash(length=8).upper()}"
+
+	reports_to = meta.get_field("reports_to")
+	if reports_to and reports_to.reqd:
+		# possibleworks.employee.sync_leave_approver_and_reports_to (an Employee
+		# before_save hook) rejects a Reports To without a user account.
+		manager = frappe.get_all(
+			"Employee",
+			filters=[
+				["status", "=", "Active"],
+				["user_id", "is", "set"],
+				["user_id", "not in", [EMPLOYEE_1, EMPLOYEE_2]],
+			],
+			pluck="name",
+			limit=1,
+		)
+		if manager:
+			extra["reports_to"] = manager[0]
+
+	extra.update(kwargs)
+	return make_employee(user, **extra)
 
 
 class TestForm16(IntegrationTestCase):
@@ -48,8 +129,8 @@ class TestForm16(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		frappe.db.delete("Form 16")
 
-		self.employee_1 = make_employee(EMPLOYEE_1, company=erpnext.get_default_company())
-		self.employee_2 = make_employee(EMPLOYEE_2, company=erpnext.get_default_company())
+		self.employee_1 = make_form16_employee(EMPLOYEE_1, company=erpnext.get_default_company())
+		self.employee_2 = make_form16_employee(EMPLOYEE_2, company=erpnext.get_default_company())
 		self.payroll_period = create_payroll_period().name
 
 	def tearDown(self):
@@ -196,7 +277,10 @@ class TestForm16(IntegrationTestCase):
 
 			for row in own_documents:
 				download_form16_document(own.name, row["row_name"])
-				self.assertEqual(frappe.local.response.filename, "form16.pdf")
+				# save_file appends a hash when the filename is already taken on this
+				# site, so match the shape rather than the literal name.
+				self.assertTrue(frappe.local.response.filename.startswith("form16"))
+				self.assertTrue(frappe.local.response.filename.endswith(".pdf"))
 				self.assertTrue(frappe.local.response.filecontent)
 
 			self.assertRaises(frappe.PermissionError, list_form16_documents, others.name)
