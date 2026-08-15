@@ -1,0 +1,53 @@
+{
+ "actions": [],
+ "creation": "2026-08-14 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "document_type",
+  "attachment",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Document Type",
+   "options": "Onboarding Document Type",
+   "reqd": 1
+  },
+  {
+   "columns": 4,
+   "description": "Must be uploaded as a private file.",
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "in_list_view": 1,
+   "label": "Attachment",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-14 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Onboarding",
+ "name": "Onboarding Applicant Document",
+ "owner": "Administrator",
+ "permissions": [],
+ "quick_entry": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,358 @@
+// Copyright (c) 2026, Possibleworks and contributors
+// For license information, please see license.txt
+
+// Renders the "Employee Letters" section on the Employee form. Letters are
+// driven by the "Employee Letter Template" doctype, so HR Admins can add
+// their own letters in addition to the seeded defaults (Relieving Letter,
+// Experience Letter, Service Certificate).
+
+frappe.provide("possibleworks.employee_letters");
+
+const LETTER_API = "possibleworks.hr_documents.letters.api";
+const TEMPLATE_DOCTYPE = "Employee Letter Template";
+const ALLOWED_ROLES = ["System Manager", "HR Manager"];
+
+const esc = (s) => frappe.utils.escape_html(s == null ? "" : String(s));
+
+frappe.ui.form.on("Employee", {
+	refresh(frm) {
+		possibleworks.employee_letters.render(frm);
+	},
+});
+
+possibleworks.employee_letters.render = function (frm) {
+	const field = frm.get_field("custom_employee_letters_html");
+	if (!field) return;
+
+	const has_access = ALLOWED_ROLES.some((r) => frappe.user.has_role(r));
+	if (!has_access) {
+		field.$wrapper.empty();
+		return;
+	}
+
+	if (frm.is_new()) {
+		field.$wrapper.html(
+			`<p class="text-muted small">${__("Save the employee to generate letters.")}</p>`
+		);
+		return;
+	}
+
+	frappe.call({
+		method: `${LETTER_API}.list_letter_templates`,
+		args: { employee: frm.doc.name },
+		callback(r) {
+			possibleworks.employee_letters.render_cards(frm, field, r.message || []);
+		},
+	});
+};
+
+possibleworks.employee_letters.render_cards = function (frm, field, templates) {
+	const cards = templates
+		.map((t) => {
+			const disabled = !t.available;
+			const note = disabled
+				? `<div class="pw-letter-note">${frappe.utils.icon("info", "xs")} ${__("Set a Relieving Date to enable")}</div>`
+				: "";
+			return `
+			<div class="pw-letter-card ${disabled ? "is-disabled" : ""}" data-letter="${esc(t.name)}">
+				<div class="pw-letter-head">
+					<span class="pw-letter-icon">${frappe.utils.icon(t.icon || "file-text", "md")}</span>
+					<div class="pw-letter-meta">
+						<div class="pw-letter-title">${esc(t.template_name)}</div>
+						<div class="pw-letter-desc">${esc(t.description || "")}</div>
+					</div>
+					<button class="btn btn-xs pw-letter-edit" data-letter="${esc(t.name)}" title="${__("Edit template")}">
+						${frappe.utils.icon("edit", "xs")}
+					</button>
+				</div>
+				<div class="pw-letter-actions">
+					<button class="btn btn-xs btn-default" data-action="print" ${disabled ? "disabled" : ""}>
+						${frappe.utils.icon("printer", "xs")} ${__("Preview / Print")}
+					</button>
+					<button class="btn btn-xs btn-default" data-action="email" ${disabled ? "disabled" : ""}>
+						${frappe.utils.icon("mail", "xs")} ${__("Email")}
+					</button>
+				</div>
+				${note}
+			</div>`;
+		})
+		.join("");
+
+	const empty = templates.length
+		? ""
+		: `<p class="text-muted small">${__("No letter templates yet. Create one to get started.")}</p>`;
+
+	field.$wrapper.html(`
+		${possibleworks.employee_letters.styles()}
+		<div class="pw-letters">
+			<div class="pw-letters-toolbar">
+				<button class="btn btn-xs btn-default pw-new-letter">
+					${frappe.utils.icon("add", "xs")} ${__("New Letter Template")}
+				</button>
+			</div>
+			<div class="pw-letters-grid">${cards}</div>
+			${empty}
+		</div>
+	`);
+
+	field.$wrapper.find(".pw-new-letter").on("click", () =>
+		possibleworks.employee_letters.create_template(frm)
+	);
+
+	field.$wrapper.find(".pw-letter-edit").on("click", function (e) {
+		e.stopPropagation();
+		frappe.set_route("Form", TEMPLATE_DOCTYPE, $(this).data("letter"));
+	});
+
+	field.$wrapper.find(".pw-letter-card").each(function () {
+		const letter = $(this).data("letter");
+		$(this)
+			.find(".pw-letter-actions button[data-action]")
+			.on("click", function () {
+				const action = $(this).data("action");
+				if (action === "print") possibleworks.employee_letters.print_view(frm, letter);
+				else if (action === "email") possibleworks.employee_letters.email(frm, letter);
+			});
+	});
+};
+
+possibleworks.employee_letters.styles = function () {
+	return `
+	<style>
+		.pw-letters { margin: 4px 0; }
+		.pw-letters-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+		.pw-letters-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+			gap: 12px;
+		}
+		.pw-letter-card {
+			border: 1px solid var(--border-color);
+			border-radius: var(--border-radius-lg, 8px);
+			background: var(--card-bg, var(--fg-color));
+			padding: 14px 16px;
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+			transition: box-shadow .15s ease, border-color .15s ease;
+		}
+		.pw-letter-card:hover { box-shadow: var(--shadow-sm); border-color: var(--gray-300); }
+		.pw-letter-card.is-disabled { opacity: .6; }
+		.pw-letter-head { display: flex; align-items: flex-start; gap: 10px; }
+		.pw-letter-icon {
+			flex: 0 0 auto;
+			width: 32px; height: 32px;
+			display: inline-flex; align-items: center; justify-content: center;
+			border-radius: var(--border-radius, 6px);
+			background: var(--bg-blue, var(--control-bg));
+			color: var(--text-on-blue, var(--text-color));
+		}
+		.pw-letter-icon > svg { width: 16px; height: 16px; }
+		.pw-letter-meta { flex: 1 1 auto; min-width: 0; }
+		.pw-letter-title { font-weight: 600; color: var(--heading-color, var(--text-color)); }
+		.pw-letter-desc { font-size: var(--text-sm, 12px); color: var(--text-muted); line-height: 1.4; margin-top: 2px; }
+		.pw-letter-edit { flex: 0 0 auto; opacity: 0; transition: opacity .15s ease; padding: 2px 6px; }
+		.pw-letter-card:hover .pw-letter-edit { opacity: .7; }
+		.pw-letter-edit:hover { opacity: 1; }
+		.pw-letter-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+		.pw-letter-actions .btn { display: inline-flex; align-items: center; gap: 4px; }
+		.pw-letter-note {
+			display: flex; align-items: center; gap: 5px;
+			font-size: var(--text-xs, 11px); color: var(--text-muted);
+		}
+		.pw-letter-note > svg { width: 12px; height: 12px; }
+	</style>`;
+};
+
+// Open Frappe's native in-desk print view with this letter's format
+// preselected — the same preview/print experience used for Salary Slips.
+// The template name is also the Print Format name.
+possibleworks.employee_letters.print_view = function (frm, letter) {
+	frappe.route_options = {
+		frm: {
+			doctype: "Employee",
+			docname: frm.doc.name,
+			doc: frm.doc,
+			meta: Object.assign({}, frm.meta, { default_print_format: letter }),
+		},
+	};
+	frappe.set_route("print", "Employee", frm.doc.name);
+};
+
+possibleworks.employee_letters.email = function (frm, letter) {
+	const default_recipient = frm.doc.company_email || frm.doc.personal_email || "";
+
+	const d = new frappe.ui.Dialog({
+		title: __("Email {0}", [letter]),
+		fields: [
+			{
+				fieldname: "recipient",
+				label: __("To"),
+				fieldtype: "Data",
+				reqd: 1,
+				default: default_recipient,
+				description: __("For multiple recipients, separate email addresses with commas."),
+			},
+			{
+				fieldname: "subject",
+				label: __("Subject"),
+				fieldtype: "Data",
+				default: __("{0} - {1}", [letter, frm.doc.employee_name]),
+			},
+			{
+				fieldname: "message",
+				label: __("Message"),
+				fieldtype: "Text Editor",
+				default: __(
+					"Dear {0},<br><br>Please find your {1} attached.<br><br>Regards,<br>HR Team",
+					[frm.doc.employee_name, letter]
+				),
+			},
+			{
+				fieldtype: "HTML",
+				options: `<p class="text-muted small">${__("The letter will be attached as a PDF.")}</p>`,
+			},
+		],
+		primary_action_label: __("Send"),
+		primary_action(values) {
+			frappe.call({
+				method: `${LETTER_API}.email_letter`,
+				args: {
+					employee: frm.doc.name,
+					letter,
+					recipient: values.recipient,
+					subject: values.subject,
+					message: values.message,
+				},
+				freeze: true,
+				freeze_message: __("Sending..."),
+				callback(r) {
+					if (r.message) {
+						frappe.show_alert({
+							message: __("{0} sent to {1}", [r.message.letter, r.message.sent_to]),
+							indicator: "green",
+						});
+						d.hide();
+					}
+				},
+			});
+		},
+	});
+	d.show();
+};
+
+// Dialog to create a new letter template. On save the doctype auto-generates
+// a matching Print Format, so the new letter immediately supports
+// Preview / Print and Email.
+possibleworks.employee_letters.create_template = function (frm) {
+	// Placeholders are resolved live from the Employee doctype so every field
+	// (including custom fields) is available — nothing is hard-coded here.
+	frappe.call({
+		method: `${LETTER_API}.get_letter_placeholders`,
+		callback(r) {
+			possibleworks.employee_letters._open_create_dialog(frm, r.message || { helpers: [], fields: [] });
+		},
+	});
+};
+
+possibleworks.employee_letters._open_create_dialog = function (frm, placeholders) {
+	const helpers = placeholders.helpers || [];
+	const fields = placeholders.fields || [];
+
+	const helper_chips = helpers
+		.map((h) => `<code title="${esc(h.label)}">{{ ${h.name} }}</code>`)
+		.join(" ");
+
+	// "label (fieldname)" so users can find a field by its human label but
+	// insert the correct token.
+	const field_options = [""].concat(
+		fields.map((f) => (f.label && f.label !== f.name ? `${f.label} (${f.name})` : f.name))
+	);
+	const token_from_option = (opt) => {
+		const m = /\(([^()]+)\)\s*$/.exec(opt || "");
+		return m ? m[1] : opt;
+	};
+
+	const help = `<div class="text-muted small" style="margin:2px 0 8px;line-height:1.9;">
+		<b>${__("Computed placeholders")}:</b> ${helper_chips}
+		<br>${__("You can also use any Employee field below, and conditionals like")}
+		<code>{% if is_relieved %}…{% endif %}</code>
+	</div>`;
+
+	const d = new frappe.ui.Dialog({
+		title: __("New Letter Template"),
+		size: "large",
+		fields: [
+			{
+				fieldname: "template_name",
+				label: __("Template Name"),
+				fieldtype: "Data",
+				reqd: 1,
+				description: __("Shown on the card; also used as the Print Format name."),
+			},
+			{ fieldname: "cb1", fieldtype: "Column Break" },
+			{
+				fieldname: "requires_relieving_date",
+				label: __("Requires Relieving Date"),
+				fieldtype: "Check",
+			},
+			{ fieldname: "sb1", fieldtype: "Section Break" },
+			{
+				fieldname: "letter_title",
+				label: __("Letter Title"),
+				fieldtype: "Data",
+				reqd: 1,
+				description: __("Heading, e.g. RELIEVING LETTER"),
+			},
+			{
+				fieldname: "subtitle",
+				label: __("Subtitle"),
+				fieldtype: "Data",
+				description: __("Optional, e.g. TO WHOMSOEVER IT MAY CONCERN"),
+			},
+			{ fieldname: "description", label: __("Card Description"), fieldtype: "Data" },
+			{ fieldtype: "HTML", options: help },
+			{
+				fieldname: "insert_placeholder",
+				label: __("Insert Employee Field"),
+				fieldtype: "Select",
+				options: field_options,
+				description: __("Pick a field to append its placeholder to the body."),
+			},
+			{ fieldname: "body", label: __("Body"), fieldtype: "Text Editor", reqd: 1 },
+		],
+		primary_action_label: __("Create"),
+		primary_action(values) {
+			const doc = Object.assign({ doctype: TEMPLATE_DOCTYPE, enabled: 1 }, values);
+			delete doc.insert_placeholder;
+			frappe.call({
+				method: "frappe.client.insert",
+				args: { doc },
+				freeze: true,
+				freeze_message: __("Creating..."),
+				callback(r) {
+					if (r.message) {
+						frappe.show_alert({
+							message: __("Letter template “{0}” created", [r.message.name]),
+							indicator: "green",
+						});
+						d.hide();
+						possibleworks.employee_letters.render(frm);
+					}
+				},
+			});
+		},
+	});
+
+	// Append the chosen field's placeholder token to the body, then reset.
+	d.fields_dict.insert_placeholder.$input.on("change", function () {
+		const token = token_from_option(d.get_value("insert_placeholder"));
+		if (token) {
+			const cur = d.get_value("body") || "";
+			d.set_value("body", `${cur} {{ ${token} }}`);
+		}
+		d.set_value("insert_placeholder", "");
+	});
+
+	d.show();
+};

@@ -1,0 +1,832 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 0,
+ "autoname": "HR-ONB-.YYYY.-.#####",
+ "creation": "2026-08-14 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "applicant_tab",
+  "name_section",
+  "salutation",
+  "first_name",
+  "middle_name",
+  "last_name",
+  "applicant_name",
+  "cb_name",
+  "gender",
+  "date_of_birth",
+  "marital_status",
+  "blood_group",
+  "image",
+  "contact_section",
+  "personal_email",
+  "cell_number",
+  "cb_contact",
+  "identity_section",
+  "aadhar_number",
+  "pan_number",
+  "cb_identity",
+  "passport_number",
+  "address_tab",
+  "current_address_section",
+  "current_address",
+  "current_accommodation_type",
+  "permanent_address_section",
+  "same_as_current_address",
+  "permanent_address",
+  "permanent_accommodation_type",
+  "emergency_section",
+  "person_to_be_contacted",
+  "relation",
+  "cb_emergency",
+  "emergency_phone_number",
+  "bank_tab",
+  "bank_section",
+  "salary_mode",
+  "bank_name",
+  "bank_ac_no",
+  "bank_account_holder_name",
+  "cb_bank",
+  "ifsc_code",
+  "micr_code",
+  "iban",
+  "statutory_section",
+  "provident_fund_account",
+  "history_tab",
+  "education_section",
+  "education",
+  "experience_section",
+  "external_work_history",
+  "total_experience_years",
+  "documents_tab",
+  "template_section",
+  "document_template",
+  "cb_template",
+  "document_checklist_html",
+  "required_documents_section",
+  "required_documents",
+  "applicant_fields",
+  "documents_section",
+  "documents",
+  "hr_tab",
+  "org_section",
+  "company",
+  "date_of_joining",
+  "employee_number",
+  "company_email",
+  "cb_org",
+  "department",
+  "designation",
+  "branch",
+  "employment_type",
+  "assignment_section",
+  "grade",
+  "reports_to",
+  "cb_assignment",
+  "holiday_list",
+  "default_shift",
+  "pending_fields_tab",
+  "pending_fields_section",
+  "pending_fields_html",
+  "pending_employee_fields",
+  "pending_fields_signature",
+  "pending_fields_stale",
+  "status_tab",
+  "status_section",
+  "status",
+  "employee",
+  "cb_status",
+  "applicant_submitted_on",
+  "applicant_declaration",
+  "declaration_accepted_on",
+  "access_section",
+  "applicant_user",
+  "invite_sent_on",
+  "cb_access",
+  "invite_expires_on",
+  "invite_link_html",
+  "integration_section",
+  "hr_remarks",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "applicant_tab",
+   "fieldtype": "Tab Break",
+   "label": "Applicant Details"
+  },
+  {
+   "fieldname": "name_section",
+   "fieldtype": "Section Break",
+   "label": "Name"
+  },
+  {
+   "fieldname": "salutation",
+   "fieldtype": "Link",
+   "label": "Salutation",
+   "options": "Salutation"
+  },
+  {
+   "fieldname": "first_name",
+   "fieldtype": "Data",
+   "label": "First Name"
+  },
+  {
+   "fieldname": "middle_name",
+   "fieldtype": "Data",
+   "label": "Middle Name"
+  },
+  {
+   "fieldname": "last_name",
+   "fieldtype": "Data",
+   "label": "Last Name"
+  },
+  {
+   "fieldname": "applicant_name",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "label": "Applicant Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_name",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "gender",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Gender",
+   "options": "Gender"
+  },
+  {
+   "fieldname": "date_of_birth",
+   "fieldtype": "Date",
+   "label": "Date of Birth"
+  },
+  {
+   "fieldname": "marital_status",
+   "fieldtype": "Select",
+   "label": "Marital Status",
+   "options": "\nSingle\nMarried\nDivorced\nWidowed"
+  },
+  {
+   "fieldname": "blood_group",
+   "fieldtype": "Select",
+   "label": "Blood Group",
+   "options": "\nA+\nA-\nB+\nB-\nAB+\nAB-\nO+\nO-"
+  },
+  {
+   "fieldname": "image",
+   "fieldtype": "Attach Image",
+   "hidden": 1,
+   "label": "Photograph",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "contact_section",
+   "fieldtype": "Section Break",
+   "label": "Contact"
+  },
+  {
+   "fieldname": "personal_email",
+   "fieldtype": "Data",
+   "label": "Personal Email",
+   "options": "Email",
+   "reqd": 1
+  },
+  {
+   "description": "Include the country code, e.g. +91-9876543210.",
+   "fieldname": "cell_number",
+   "fieldtype": "Phone",
+   "label": "Mobile Number"
+  },
+  {
+   "fieldname": "cb_contact",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "identity_section",
+   "fieldtype": "Section Break",
+   "label": "Statutory Identifiers"
+  },
+  {
+   "description": "12 digits. Validated against the UIDAI checksum.",
+   "fieldname": "aadhar_number",
+   "fieldtype": "Data",
+   "label": "Aadhaar Number",
+   "length": 12,
+   "print_hide": 1,
+   "translatable": 0
+  },
+  {
+   "fieldname": "pan_number",
+   "fieldtype": "Data",
+   "label": "PAN Number",
+   "length": 10,
+   "print_hide": 1,
+   "translatable": 0
+  },
+  {
+   "fieldname": "cb_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "passport_number",
+   "fieldtype": "Data",
+   "label": "Passport Number",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "address_tab",
+   "fieldtype": "Tab Break",
+   "label": "Address & Emergency Contact"
+  },
+  {
+   "fieldname": "current_address_section",
+   "fieldtype": "Section Break",
+   "label": "Current Address"
+  },
+  {
+   "fieldname": "current_address",
+   "fieldtype": "Small Text",
+   "label": "Current Address"
+  },
+  {
+   "fieldname": "current_accommodation_type",
+   "fieldtype": "Select",
+   "label": "Current Address Is",
+   "options": "\nRented\nOwned"
+  },
+  {
+   "fieldname": "permanent_address_section",
+   "fieldtype": "Section Break",
+   "label": "Permanent Address"
+  },
+  {
+   "default": "0",
+   "fieldname": "same_as_current_address",
+   "fieldtype": "Check",
+   "label": "Same as Current Address"
+  },
+  {
+   "depends_on": "eval:!doc.same_as_current_address",
+   "fieldname": "permanent_address",
+   "fieldtype": "Small Text",
+   "label": "Permanent Address"
+  },
+  {
+   "depends_on": "eval:!doc.same_as_current_address",
+   "fieldname": "permanent_accommodation_type",
+   "fieldtype": "Select",
+   "label": "Permanent Address Is",
+   "options": "\nRented\nOwned"
+  },
+  {
+   "fieldname": "emergency_section",
+   "fieldtype": "Section Break",
+   "label": "Emergency Contact"
+  },
+  {
+   "bold": 1,
+   "fieldname": "person_to_be_contacted",
+   "fieldtype": "Data",
+   "label": "Emergency Contact Name"
+  },
+  {
+   "fieldname": "relation",
+   "fieldtype": "Data",
+   "label": "Relation"
+  },
+  {
+   "fieldname": "cb_emergency",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "description": "Include the country code, e.g. +91-9876543210.",
+   "fieldname": "emergency_phone_number",
+   "fieldtype": "Phone",
+   "label": "Emergency Phone Number"
+  },
+  {
+   "fieldname": "bank_tab",
+   "fieldtype": "Tab Break",
+   "label": "Bank Details"
+  },
+  {
+   "fieldname": "bank_section",
+   "fieldtype": "Section Break",
+   "label": "Salary Payment"
+  },
+  {
+   "default": "Bank",
+   "fieldname": "salary_mode",
+   "fieldtype": "Select",
+   "label": "Salary Mode",
+   "options": "\nBank\nCash\nCheque"
+  },
+  {
+   "depends_on": "eval:doc.salary_mode == 'Bank'",
+   "fieldname": "bank_name",
+   "fieldtype": "Data",
+   "label": "Bank Name"
+  },
+  {
+   "depends_on": "eval:doc.salary_mode == 'Bank'",
+   "fieldname": "bank_ac_no",
+   "fieldtype": "Data",
+   "label": "Bank A/C No.",
+   "print_hide": 1
+  },
+  {
+   "depends_on": "eval:doc.salary_mode == 'Bank'",
+   "description": "As printed on the passbook or cheque, for verification.",
+   "fieldname": "bank_account_holder_name",
+   "fieldtype": "Data",
+   "label": "Account Holder Name"
+  },
+  {
+   "fieldname": "cb_bank",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.salary_mode == 'Bank'",
+   "fieldname": "ifsc_code",
+   "fieldtype": "Data",
+   "label": "IFSC Code",
+   "length": 11,
+   "print_hide": 1,
+   "translatable": 0
+  },
+  {
+   "depends_on": "eval:doc.salary_mode == 'Bank'",
+   "fieldname": "micr_code",
+   "fieldtype": "Data",
+   "label": "MICR Code",
+   "print_hide": 1,
+   "translatable": 0
+  },
+  {
+   "depends_on": "eval:doc.salary_mode == 'Bank'",
+   "fieldname": "iban",
+   "fieldtype": "Data",
+   "label": "IBAN",
+   "options": "IBAN",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "statutory_section",
+   "fieldtype": "Section Break",
+   "label": "Statutory"
+  },
+  {
+   "fieldname": "provident_fund_account",
+   "fieldtype": "Data",
+   "label": "UAN / PF Account",
+   "print_hide": 1,
+   "translatable": 0
+  },
+  {
+   "fieldname": "history_tab",
+   "fieldtype": "Tab Break",
+   "label": "Education & Experience"
+  },
+  {
+   "fieldname": "education_section",
+   "fieldtype": "Section Break",
+   "label": "Educational Qualification"
+  },
+  {
+   "fieldname": "education",
+   "fieldtype": "Table",
+   "label": "Education",
+   "options": "Onboarding Applicant Education"
+  },
+  {
+   "fieldname": "experience_section",
+   "fieldtype": "Section Break",
+   "label": "Previous Work Experience"
+  },
+  {
+   "fieldname": "external_work_history",
+   "fieldtype": "Table",
+   "label": "Work Experience",
+   "options": "Onboarding Applicant Work History"
+  },
+  {
+   "description": "Derived from the work experience rows above.",
+   "fieldname": "total_experience_years",
+   "fieldtype": "Float",
+   "label": "Total Experience (Years)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "documents_tab",
+   "fieldtype": "Tab Break",
+   "label": "Documents"
+  },
+  {
+   "fieldname": "template_section",
+   "fieldtype": "Section Break",
+   "label": "Document Requirements"
+  },
+  {
+   "description": "Which documents this hire must provide. Suggested from Company / Employment Type / Designation; override it if needed.",
+   "fieldname": "document_template",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Document Template",
+   "options": "Onboarding Document Template"
+  },
+  {
+   "fieldname": "cb_template",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "document_checklist_html",
+   "fieldtype": "HTML",
+   "label": "Document Checklist",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "required_documents_section",
+   "fieldtype": "Section Break",
+   "label": "Requirements Snapshot"
+  },
+  {
+   "description": "Copied from the template when it was selected. Editing the template later does not change this record \u2014 use Re-sync from Template to pull changes in.",
+   "fieldname": "required_documents",
+   "fieldtype": "Table",
+   "label": "Required Documents",
+   "options": "Onboarding Document Template Item",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Fields the applicant is asked for, copied from the template when it was selected.",
+   "fieldname": "applicant_fields",
+   "fieldtype": "Table",
+   "label": "Applicant Fields",
+   "options": "Onboarding Template Field",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "documents_section",
+   "fieldtype": "Section Break",
+   "label": "Uploaded Documents"
+  },
+  {
+   "description": "All documents must be uploaded as private files.",
+   "fieldname": "documents",
+   "fieldtype": "Table",
+   "label": "Documents",
+   "options": "Onboarding Applicant Document",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "hr_tab",
+   "fieldtype": "Tab Break",
+   "label": "HR / Organisation"
+  },
+  {
+   "fieldname": "org_section",
+   "fieldtype": "Section Break",
+   "label": "Organisation"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "description": "Submission is blocked until this date is reached.",
+   "fieldname": "date_of_joining",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Date of Joining",
+   "reqd": 1
+  },
+  {
+   "description": "Used as the Employee ID only when HR Settings names Employees by Employee Number.",
+   "fieldname": "employee_number",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "label": "Employee Number"
+  },
+  {
+   "fieldname": "company_email",
+   "fieldtype": "Data",
+   "label": "Work Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "cb_org",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Department",
+   "options": "Department"
+  },
+  {
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Designation",
+   "options": "Designation"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch"
+  },
+  {
+   "fieldname": "employment_type",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Employment Type",
+   "options": "Employment Type"
+  },
+  {
+   "fieldname": "assignment_section",
+   "fieldtype": "Section Break",
+   "label": "Assignment"
+  },
+  {
+   "fieldname": "grade",
+   "fieldtype": "Link",
+   "label": "Grade",
+   "options": "Employee Grade"
+  },
+  {
+   "fieldname": "reports_to",
+   "fieldtype": "Link",
+   "label": "Reports To",
+   "options": "Employee"
+  },
+  {
+   "fieldname": "cb_assignment",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "holiday_list",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Holiday List",
+   "options": "Holiday List"
+  },
+  {
+   "fieldname": "default_shift",
+   "fieldtype": "Link",
+   "label": "Default Shift",
+   "options": "Shift Type"
+  },
+  {
+   "fieldname": "pending_fields_tab",
+   "fieldtype": "Tab Break",
+   "label": "Pending Employee Fields"
+  },
+  {
+   "fieldname": "pending_fields_section",
+   "fieldtype": "Section Break",
+   "label": "Additional Required Information"
+  },
+  {
+   "fieldname": "pending_fields_html",
+   "fieldtype": "HTML",
+   "label": "Pending Fields",
+   "read_only": 1
+  },
+  {
+   "description": "Filled in automatically from the panel above. Not edited by hand.",
+   "fieldname": "pending_employee_fields",
+   "fieldtype": "Table",
+   "label": "Captured Values",
+   "options": "Onboarding Pending Employee Field",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "pending_fields_signature",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Pending Fields Signature",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "pending_fields_stale",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Pending Fields Stale",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "status_tab",
+   "fieldtype": "Tab Break",
+   "label": "Status & Audit"
+  },
+  {
+   "fieldname": "status_section",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "default": "Awaiting Applicant",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Awaiting Applicant\nApplicant Submitted\nHR Review\nReady to Onboard\nOnboarded\nCancelled",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "no_copy": 1,
+   "options": "Employee",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "cb_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "applicant_submitted_on",
+   "fieldtype": "Datetime",
+   "label": "Applicant Submitted On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "applicant_declaration",
+   "fieldtype": "Check",
+   "label": "Declaration Accepted",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "declaration_accepted_on",
+   "fieldtype": "Datetime",
+   "label": "Declaration Accepted On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "access_section",
+   "fieldtype": "Section Break",
+   "label": "Applicant Access"
+  },
+  {
+   "description": "Website User created for this applicant. No Desk access.",
+   "fieldname": "applicant_user",
+   "fieldtype": "Link",
+   "label": "Portal User",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "invite_sent_on",
+   "fieldtype": "Datetime",
+   "label": "Invite Sent On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_access",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "After this the link stops working. Use Invite Applicant again to issue a fresh one.",
+   "fieldname": "invite_expires_on",
+   "fieldtype": "Datetime",
+   "label": "Invite Expires On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "invite_link_html",
+   "fieldtype": "HTML",
+   "label": "Invite Link",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "integration_section",
+   "fieldtype": "Section Break",
+   "label": "HR Notes"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "hr_remarks",
+   "fieldtype": "Small Text",
+   "label": "HR Remarks"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Onboarding Applicant",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-08-14 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Onboarding",
+ "name": "Onboarding Applicant",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR User",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Onboarding Integration",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Onboarding Applicant Portal",
+   "write": 1
+  }
+ ],
+ "search_fields": "applicant_name,personal_email,date_of_joining,status",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "applicant_name",
+ "track_changes": 1
+}

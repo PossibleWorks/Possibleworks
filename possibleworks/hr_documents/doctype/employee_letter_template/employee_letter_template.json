@@ -1,0 +1,144 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:template_name",
+ "creation": "2026-08-14 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_details",
+  "template_name",
+  "enabled",
+  "requires_relieving_date",
+  "is_default",
+  "column_break_details",
+  "letter_title",
+  "subtitle",
+  "icon",
+  "description",
+  "section_break_content",
+  "placeholders_help",
+  "body"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Template Name",
+   "reqd": 1,
+   "unique": 1,
+   "description": "Shown on the letter card and used as the Print Format name."
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "default": "0",
+   "fieldname": "requires_relieving_date",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Requires Relieving Date",
+   "description": "If checked, this letter is only available once a Relieving Date is set on the employee."
+  },
+  {
+   "default": "0",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "label": "Is Default",
+   "read_only": 1,
+   "description": "System-provided template. Cannot be deleted."
+  },
+  {
+   "fieldname": "column_break_details",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "letter_title",
+   "fieldtype": "Data",
+   "label": "Letter Title",
+   "reqd": 1,
+   "description": "Heading shown at the top, e.g. RELIEVING LETTER"
+  },
+  {
+   "fieldname": "subtitle",
+   "fieldtype": "Data",
+   "label": "Subtitle",
+   "description": "Optional line under the title, e.g. TO WHOMSOEVER IT MAY CONCERN"
+  },
+  {
+   "default": "file-text",
+   "fieldname": "icon",
+   "fieldtype": "Data",
+   "label": "Icon",
+   "description": "Frappe icon name shown on the card (e.g. file-text, star, clock)."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description",
+   "description": "Short text shown on the card."
+  },
+  {
+   "fieldname": "section_break_content",
+   "fieldtype": "Section Break",
+   "label": "Letter Body"
+  },
+  {
+   "fieldname": "placeholders_help",
+   "fieldtype": "HTML",
+   "label": "Placeholders",
+   "options": "<div class=\"text-muted\" style=\"font-size:12px;\">Use any Employee field as a placeholder, e.g. <code>{{ employee_name }}</code> or <code>{{ cell_number }}</code>, plus computed helpers like <code>{{ tenure_text }}</code>. Conditionals are supported, e.g. <code>{% if is_relieved %}…{% endif %}</code>.</div>"
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Text Editor",
+   "label": "Body",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "module": "HR Documents",
+ "name": "Employee Letter Template",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "track_changes": 1
+}
