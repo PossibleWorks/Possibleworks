@@ -24,6 +24,19 @@ from possibleworks.onboarding.constants import (
 	PORTAL_ROLE,
 	READY_TO_ONBOARD,
 )
+from possibleworks.onboarding.validators import normalise_phone, verhoeff_check_digit
+from possibleworks.tests.site_fixtures import sample_value_for
+from possibleworks.www import onboarding as onboarding_page
+
+
+def _aadhaar(prefix: str) -> str:
+	"""Minted rather than hardcoded, so these stay checksum-valid by construction."""
+	return prefix + str(verhoeff_check_digit(prefix))
+
+
+# A pair, because "did the value change?" needs two values that both pass validation.
+VALID_AADHAAR = _aadhaar("23412341234")
+OTHER_AADHAAR = _aadhaar("29876543210")
 
 # No IGNORE_TEST_RECORD_DEPENDENCIES here: that is only honoured for tests inside a
 # doctype folder. A module-level test has no `cls.doctype`, so IntegrationTestCase
@@ -196,6 +209,7 @@ class TestOnboardingPortal(IntegrationTestCase):
 		)
 		doc.status = READY_TO_ONBOARD
 		doc.save()
+		capture_site_mandatory_fields(doc)
 		doc.submit()
 
 		doc.reload()
@@ -369,6 +383,614 @@ class TestOnboardingPortal(IntegrationTestCase):
 		finally:
 			frappe.set_user("Administrator")
 
+	# ------------------------------------------------------------------ #
+	# Personal Email is identity, not data
+	# ------------------------------------------------------------------ #
+
+	def test_personal_email_cannot_be_made_editable_by_a_template(self):
+		"""Display-only, and corrected rather than rejected -- showing an applicant the
+		address on file is useful, letting them change it is not."""
+		template = self.make_template(
+			field_rows=[{"fieldname": "personal_email", "is_editable": 1, "is_required": 1}]
+		)
+		row = template.applicant_fields[0]
+		self.assertFalse(row.is_editable)
+		self.assertFalse(row.is_required)
+
+	def test_applicant_cannot_change_their_personal_email(self):
+		"""`applicant_user` is written once, at invite, and nothing re-syncs it -- so an
+		edit here would silently detach the record from the login it is keyed on."""
+		doc = self.invited(
+			document_template=self.make_template(
+				field_rows=[{"fieldname": "personal_email", "is_editable": 1}]
+			).name
+		)
+		original = doc.personal_email
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save({"personal_email": "someone.else@example.com"})
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(doc.personal_email, original)
+		self.assertEqual(doc.applicant_user, original)
+
+	# ------------------------------------------------------------------ #
+	# Lock Once Provided
+	# ------------------------------------------------------------------ #
+
+	def locking_template(self, fieldname="aadhar_number"):
+		return self.make_template(
+			field_rows=[{"fieldname": fieldname, "is_editable": 1, "lock_when_filled": 1}]
+		)
+
+	def test_lock_when_filled_still_accepts_the_first_value(self):
+		"""The regression this design is most likely to cause: resolving editability
+		against the incoming doc would see the value just typed and reject the very save
+		that supplied it."""
+		doc = self.invited(document_template=self.locking_template().name)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save({"aadhar_number": VALID_AADHAAR})
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(doc.aadhar_number, VALID_AADHAAR)
+
+	def test_lock_when_filled_protects_a_value_hr_prefilled(self):
+		doc = self.invited(
+			document_template=self.locking_template().name, aadhar_number=VALID_AADHAAR
+		)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save({"aadhar_number": OTHER_AADHAAR})
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(doc.aadhar_number, VALID_AADHAAR)
+
+	def test_lock_when_filled_closes_once_the_applicant_supplies_it(self):
+		doc = self.invited(document_template=self.locking_template().name)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save({"aadhar_number": VALID_AADHAAR})
+			portal.portal_save({"aadhar_number": OTHER_AADHAAR})
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(doc.aadhar_number, VALID_AADHAAR)
+
+	def test_plain_editable_field_stays_overwritable(self):
+		"""Without lock_when_filled the old behaviour is unchanged."""
+		doc = self.invited(
+			document_template=self.make_template(
+				field_rows=[{"fieldname": "aadhar_number", "is_editable": 1}]
+			).name,
+			aadhar_number=VALID_AADHAAR,
+		)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save({"aadhar_number": OTHER_AADHAAR})
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(doc.aadhar_number, OTHER_AADHAAR)
+
+	# ------------------------------------------------------------------ #
+	# Repeating tables
+	# ------------------------------------------------------------------ #
+
+	def table_template(self, fieldname="education"):
+		return self.make_template(field_rows=[{"fieldname": fieldname, "is_editable": 1}])
+
+	def test_lock_when_filled_is_rejected_on_a_table(self):
+		"""It compares one stored value; a list of rows has none."""
+		self.assertRaises(
+			frappe.ValidationError,
+			self.make_template,
+			field_rows=[{"fieldname": "education", "is_editable": 1, "lock_when_filled": 1}],
+		)
+
+	def test_applicant_can_fill_a_repeating_table(self):
+		doc = self.invited(document_template=self.table_template().name)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save(
+				{},
+				tables={
+					"education": [
+						{"school_univ": "Anna University", "qualification": "B.E.", "year_of_passing": 2016},
+						{"school_univ": "IIM Bangalore", "qualification": "MBA", "year_of_passing": 2020},
+					]
+				},
+			)
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual([r.qualification for r in doc.education], ["B.E.", "MBA"])
+
+	def test_repeating_table_rows_are_replaced_not_merged(self):
+		"""The page posts the whole list it is showing, so a deleted row has to vanish."""
+		doc = self.invited(document_template=self.table_template().name)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save({}, tables={"education": [{"qualification": "B.E."}, {"qualification": "MBA"}]})
+			portal.portal_save({}, tables={"education": [{"qualification": "MBA"}]})
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual([r.qualification for r in doc.education], ["MBA"])
+
+	def test_blank_repeating_rows_are_dropped(self):
+		"""Clicking Add and then Save should not fail on the child table's own rules."""
+		doc = self.invited(document_template=self.table_template().name)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save({}, tables={"education": [{"qualification": "B.E."}, {}, {"school_univ": ""}]})
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(len(doc.education), 1)
+
+	def test_an_untouched_added_row_is_dropped(self):
+		"""What the page actually posts for a row nobody filled in.
+
+		Every rendered column is sent, and an unticked checkbox sends 0 -- so the row is
+		present-but-blank rather than absent. Judging emptiness on presence would save a
+		nameless job here.
+		"""
+		doc = self.invited(document_template=self.table_template("external_work_history").name)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save(
+				{},
+				tables={
+					"external_work_history": [
+						{
+							"company_name": "",
+							"designation": "",
+							"from_date": "",
+							"to_date": "",
+							"is_current_employer": 0,
+							"reason_for_leaving": "",
+						}
+					]
+				},
+			)
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(len(doc.external_work_history), 0)
+
+	def test_current_employer_cannot_also_have_a_leaving_date(self):
+		"""The contradiction used to be resolved by silently discarding the To Date --
+		which also skipped the inverted-date check, so a backwards pair saved cleanly as
+		long as the box was ticked."""
+		doc = self.invited(document_template=self.table_template("external_work_history").name)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				portal.portal_save(
+					{},
+					tables={
+						"external_work_history": [
+							{
+								"company_name": "Garden",
+								"from_date": "2022-08-03",
+								"to_date": "2022-08-01",
+								"is_current_employer": 1,
+							}
+						]
+					},
+				)
+			self.assertIn("current employer", str(ctx.exception).lower())
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(len(doc.external_work_history), 0)
+
+	def test_current_employer_without_a_leaving_date_counts_to_today(self):
+		doc = self.invited(document_template=self.table_template("external_work_history").name)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save(
+				{},
+				tables={
+					"external_work_history": [
+						{
+							"company_name": "Garden",
+							"from_date": add_days(today(), -365),
+							"is_current_employer": 1,
+						}
+					]
+				},
+			)
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertAlmostEqual(doc.total_experience_years, 1.0, places=1)
+
+	def test_table_not_offered_by_the_template_is_ignored(self):
+		doc = self.invited()  # FIELD_ROWS offers no tables
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save({}, tables={"education": [{"qualification": "B.E."}]})
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(len(doc.education), 0)
+
+	def test_only_the_rendered_columns_are_read_from_a_row(self):
+		"""`total_experience` is derived by the child controller; accepting it from the
+		applicant would let them contradict the computed value."""
+		doc = self.invited(document_template=self.table_template("external_work_history").name)
+
+		frappe.set_user(doc.applicant_user)
+		try:
+			portal.portal_save(
+				{},
+				tables={
+					"external_work_history": [
+						{
+							"company_name": "Acme",
+							"from_date": add_days(today(), -400),
+							"to_date": add_days(today(), -40),
+							"total_experience": "99 years",
+						}
+					]
+				},
+			)
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(doc.external_work_history[0].company_name, "Acme")
+		self.assertNotIn("99", doc.external_work_history[0].total_experience or "")
+
+	# ------------------------------------------------------------------ #
+	# Duplicate uploads
+	# ------------------------------------------------------------------ #
+
+	def multi_upload_applicant(self):
+		return self.invited(
+			document_template=self.make_template(
+				doc_rows=[
+					{"document_type": "Educational Certificate", "is_required": 0, "allow_multiple": 1, "enabled": 1}
+				]
+			).name
+		)
+
+	def test_two_files_with_the_same_name_are_rejected(self):
+		"""Different content, same name.
+
+		Frappe stores the second as `degree<hash>.png` rather than letting it collide,
+		so both save happily and HR is left with two rows whose only difference is six
+		random characters. The check compares the name the APPLICANT used, which is the
+		one they can actually act on.
+		"""
+		doc = self.multi_upload_applicant()
+		frappe.set_user(doc.applicant_user)
+		try:
+			upload(doc, "Educational Certificate", "degree.png")
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				upload(doc, "Educational Certificate", "degree.png")
+			self.assertIn("degree.png", str(ctx.exception))
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(len(doc.documents), 1)
+
+	def test_the_name_is_compared_case_insensitively(self):
+		doc = self.multi_upload_applicant()
+		frappe.set_user(doc.applicant_user)
+		try:
+			upload(doc, "Educational Certificate", "Degree.PNG")
+			self.assertRaises(
+				frappe.ValidationError, upload, doc, "Educational Certificate", "degree.png"
+			)
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_the_same_file_uploaded_twice_is_rejected(self):
+		"""Identical content dedupes on content_hash, so save_file hands back the File
+		already attached -- and two rows would end up sharing one url, where removing
+		either orphans the other."""
+		doc = self.multi_upload_applicant()
+		frappe.set_user(doc.applicant_user)
+		try:
+			upload(doc, "Educational Certificate", "degree.png", b"identical-bytes")
+			self.assertRaises(
+				frappe.ValidationError,
+				upload,
+				doc,
+				"Educational Certificate",
+				"degree-copy.png",
+				b"identical-bytes",
+			)
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(len(doc.documents), 1)
+
+	def test_rejecting_a_duplicate_never_deletes_the_file_already_in_use(self):
+		"""Content-hash dedup can hand back the EXISTING File, and cleaning that up
+		would destroy the attachment of the row already holding it."""
+		doc = self.multi_upload_applicant()
+		frappe.set_user(doc.applicant_user)
+		try:
+			url = attach_to(doc, "degree.png", b"identical-bytes")
+			portal.portal_attach("Educational Certificate", url, "degree.png")
+			self.assertRaises(
+				frappe.ValidationError,
+				portal.portal_attach,
+				"Educational Certificate",
+				url,
+				"degree.png",
+			)
+		finally:
+			frappe.set_user("Administrator")
+
+		self.assertTrue(frappe.db.exists("File", {"file_url": url}))
+		doc.reload()
+		self.assertEqual(doc.documents[0].attachment, url)
+
+	def test_distinct_filenames_are_accepted_for_a_multi_document(self):
+		doc = self.multi_upload_applicant()
+		frappe.set_user(doc.applicant_user)
+		try:
+			state = upload(doc, "Educational Certificate", "tenth.png")
+			upload(doc, "Educational Certificate", "twelfth.png")
+		finally:
+			frappe.set_user("Administrator")
+
+		# The response has to carry enough to redraw the card, or the page is back to
+		# reloading itself and losing whatever was typed.
+		self.assertEqual(state["file"]["file_name"], "tenth.png")
+		self.assertIn("progress", state)
+		self.assertTrue(state["file"]["row_name"])
+
+		doc.reload()
+		self.assertEqual(len(doc.documents), 2)
+		self.assertEqual(
+			[r.original_file_name for r in doc.documents], ["tenth.png", "twelfth.png"]
+		)
+
+	def test_one_file_cannot_stand_in_for_two_requirements(self):
+		"""The corruption worth blocking, and the reason the url check is record-wide.
+
+		`validate_required_documents` counts rows, so one PDF attached as both Aadhaar
+		Card and PAN Card makes the record read as complete when only one document was
+		ever supplied.
+		"""
+		doc = self.invited(
+			document_template=self.make_template(
+				doc_rows=[
+					{"document_type": "Aadhaar Card", "is_required": 1, "enabled": 1},
+					{"document_type": "PAN Card", "is_required": 1, "enabled": 1},
+				]
+			).name
+		)
+		frappe.set_user(doc.applicant_user)
+		try:
+			url = attach_to(doc, "both-ids.png", b"one-scan-of-two-cards")
+			portal.portal_attach("Aadhaar Card", url, "both-ids.png")
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				portal.portal_attach("PAN Card", url, "both-ids.png")
+			self.assertIn("Aadhaar Card", str(ctx.exception))
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(len(doc.documents), 1)
+
+	def test_the_same_name_under_a_different_document_type_is_fine(self):
+		doc = self.invited(
+			document_template=self.make_template(
+				doc_rows=[
+					{"document_type": "PAN Card", "is_required": 0, "enabled": 1},
+					{"document_type": "Address Proof", "is_required": 0, "enabled": 1},
+				]
+			).name
+		)
+		frappe.set_user(doc.applicant_user)
+		try:
+			upload(doc, "PAN Card", "scan.png")
+			upload(doc, "Address Proof", "scan.png")
+		finally:
+			frappe.set_user("Administrator")
+
+		doc.reload()
+		self.assertEqual(len(doc.documents), 2)
+
+	def test_removing_a_document_reports_the_new_state(self):
+		"""The page patches itself from this instead of reloading, which is what used to
+		throw away everything typed since the last save."""
+		doc = self.multi_upload_applicant()
+		frappe.set_user(doc.applicant_user)
+		try:
+			state = upload(doc, "Educational Certificate", "tenth.png")
+			removed = portal.portal_remove_document(state["file"]["row_name"])
+		finally:
+			frappe.set_user("Administrator")
+
+		self.assertEqual(removed["document_type"], "Educational Certificate")
+		self.assertIn("progress", removed)
+
+		doc.reload()
+		self.assertEqual(len(doc.documents), 0)
+
+
+class TestPhoneRendering(IntegrationTestCase):
+	"""The portal renders Phone itself, so the pieces it depends on are tested here.
+
+	Before this, a Phone field fell through to a plain text box, and the server then
+	rejected the value for having no country code -- a field that could never be filled.
+	"""
+
+	def test_country_codes_are_available_to_the_page(self):
+		countries = onboarding_page.phone_countries()
+		by_name = {c["name"]: c["isd"] for c in countries}
+		self.assertEqual(by_name["India"], "+91")
+		self.assertEqual(by_name["United States"], "+1")
+
+	def test_longest_dialling_code_wins(self):
+		"""`+1` must not claim a `+91` number."""
+		isds = ["+1", "+91", "+44"]
+		self.assertEqual(
+			onboarding_page.split_phone("+91 9876543210", isds), ("+91", "9876543210")
+		)
+		self.assertEqual(onboarding_page.split_phone("+1 4155550123", isds), ("+1", "4155550123"))
+
+	def test_a_number_with_no_code_keeps_its_digits(self):
+		self.assertEqual(onboarding_page.split_phone("9876543210", ["+91"]), ("", "9876543210"))
+
+	def test_blank_stays_blank(self):
+		self.assertEqual(onboarding_page.split_phone("", ["+91"]), ("", ""))
+		self.assertEqual(onboarding_page.split_phone(None, ["+91"]), ("", ""))
+
+	def test_stored_format_is_the_one_the_desk_can_read_back(self):
+		"""A hyphen and exactly two parts.
+
+		ControlPhone.set_formatted_input splits on "-" and re-prepends the dialling code
+		when it does not get two parts -- so anything else comes back to HR as
+		"+91-+91 9876543210".
+		"""
+		for raw in ("+91 9949596900", "+91-9949596900", "+91 99495 96900", "  +91 99495-96900  "):
+			with self.subTest(raw=raw):
+				stored = normalise_phone(raw)
+				self.assertEqual(stored, "+91-9949596900")
+				self.assertEqual(len(stored.split("-")), 2)
+
+	def test_a_number_written_with_its_own_hyphen_is_still_two_parts(self):
+		"""`98765-43210` would otherwise make three parts and trip the same branch."""
+		self.assertEqual(normalise_phone("+91 98765-43210"), "+91-9876543210")
+
+	def test_a_number_with_no_dialling_code_is_left_alone(self):
+		"""Guessing a country is worse than the server's own "Country Code Required"."""
+		self.assertEqual(normalise_phone("9949596900"), "9949596900")
+		self.assertEqual(normalise_phone(""), "")
+		self.assertEqual(normalise_phone(None), "")
+
+	def test_longer_dialling_codes_survive(self):
+		self.assertEqual(normalise_phone("+971 501234567"), "+971-501234567")
+		self.assertEqual(normalise_phone("+1 415 555 0123"), "+1-4155550123")
+
+
+class TestPhoneRoundTrip(IntegrationTestCase):
+	"""Portal write -> storage -> portal read, in one piece.
+
+	The bug this guards was invisible on the portal: the value the applicant typed came
+	back correctly there, and only the Desk showed "+91-+91 ...".
+	"""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.company = frappe.db.get_value("Company", {}, "name")
+
+	def test_a_portal_write_survives_a_desk_read(self):
+		doc = frappe.get_doc(
+			{
+				"doctype": DOCTYPE,
+				"company": self.company,
+				"date_of_joining": add_days(today(), 10),
+				"personal_email": f"phone{frappe.generate_hash(length=8)}@example.com",
+				"first_name": "Ravi",
+				# What the portal posts.
+				"cell_number": "+91-9949596900",
+			}
+		)
+		doc.insert()
+		self.addCleanup(lambda: frappe.delete_doc(DOCTYPE, doc.name, force=True))
+
+		doc.reload()
+		self.assertEqual(doc.cell_number, "+91-9949596900")
+		self.assertEqual(len(doc.cell_number.split("-")), 2)
+
+	def test_a_space_separated_value_is_repaired_on_save(self):
+		"""Covers the Desk and the integration API, not just the portal."""
+		doc = frappe.get_doc(
+			{
+				"doctype": DOCTYPE,
+				"company": self.company,
+				"date_of_joining": add_days(today(), 10),
+				"personal_email": f"phone{frappe.generate_hash(length=8)}@example.com",
+				"first_name": "Ravi",
+				"cell_number": "+91 9949596900",
+			}
+		)
+		doc.insert()
+		self.addCleanup(lambda: frappe.delete_doc(DOCTYPE, doc.name, force=True))
+
+		self.assertEqual(doc.cell_number, "+91-9949596900")
+
+	def test_the_portal_splits_the_stored_value_back_apart(self):
+		countries = onboarding_page.phone_countries()
+		isds = [c["isd"] for c in countries]
+		self.assertEqual(
+			onboarding_page.split_phone("+91-9949596900", isds), ("+91", "9949596900")
+		)
+
+
+def capture_site_mandatory_fields(doc):
+	"""Fill whatever THIS site makes mandatory on Employee, so a submit test asserts on
+	our code rather than on somebody's Employee customisation.
+
+	`hw-hris` has two `reqd` probation-date Custom Fields; without this the test passes
+	or fails depending on which site it runs against -- and, because meta is cached
+	per process, on what ran before it.
+	"""
+	from possibleworks.onboarding import pending_fields
+
+	blocking = pending_fields.resolve(doc)["blocking"]
+	if not blocking:
+		return doc
+
+	for df in blocking:
+		value = sample_value_for(df)
+		if value is None:
+			continue
+
+		doc.append(
+			"pending_employee_fields",
+			{
+				"fieldname": df["fieldname"],
+				"label": df.get("label"),
+				"fieldtype": df.get("fieldtype"),
+				"options": df.get("options"),
+				"value": value,
+			},
+		)
+
+	doc.save()
+	return doc
+
 
 def make_attachment():
 	import base64
@@ -381,3 +1003,30 @@ def make_attachment():
 	return save_file(
 		"proof.png", png + frappe.generate_hash(length=16).encode(), None, None, is_private=1
 	).file_url
+
+
+PNG_HEADER = (
+	b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00"
+)
+
+
+def attach_to(doc, file_name: str, body: bytes | None = None) -> str:
+	"""A private File genuinely attached to `doc`, which portal_attach requires.
+
+	`body` defaults to unique content, so a test only gets content-hash deduping when it
+	asks for it by passing the same bytes twice.
+	"""
+	from frappe.utils.file_manager import save_file
+
+	content = PNG_HEADER + (body if body is not None else frappe.generate_hash(length=24).encode())
+	return save_file(file_name, content, DOCTYPE, doc.name, is_private=1).file_url
+
+
+def upload(doc, document_type: str, file_name: str, body: bytes | None = None) -> dict:
+	"""Upload the way the portal does -- including the applicant's own filename.
+
+	Passing it matters: Frappe renames a colliding file on disk, so by the time
+	portal_attach sees the File its `file_name` may already be `degree1a2b3c.png`. The
+	page sends `file.name` for exactly this reason.
+	"""
+	return portal.portal_attach(document_type, attach_to(doc, file_name, body), file_name)

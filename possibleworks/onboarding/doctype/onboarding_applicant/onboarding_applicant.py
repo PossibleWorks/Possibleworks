@@ -33,6 +33,7 @@ from possibleworks.onboarding import pending_fields, validators
 from possibleworks.onboarding.constants import (
 	APPLICANT_EDITABLE_STATUSES,
 	APPLICANT_SELF_MANAGED_FIELDS,
+	APPLICANT_SHOWABLE_CHILD_TABLES,
 	APPLICANT_SUBMITTED,
 	APPLICANT_SYSTEM_CHILD_TABLES,
 	APPLICANT_WRITABLE_CHILD_TABLES,
@@ -87,6 +88,7 @@ class OnboardingApplicant(Document):
 		self.validate_bank_details()
 		self.validate_document_template_selected()
 		self.validate_required_documents()
+		self.validate_required_applicant_fields()
 		self.validate_employee_number_for_naming()
 		self.validate_employee_mandatory_fields()
 
@@ -170,6 +172,15 @@ class OnboardingApplicant(Document):
 			if self.get(fieldname):
 				self.set(fieldname, validators.normalise_code(self.get(fieldname)))
 
+		# Every Phone field, from live meta rather than a hardcoded pair, so a site that
+		# adds one as a Custom Field gets the same treatment. Done here rather than in the
+		# portal because the Desk and the integration API write these too, and only one of
+		# the three formats survives a round trip through the Desk control.
+		for df in self.meta.get_phone_fields():
+			value = self.get(df.fieldname)
+			if value:
+				self.set(df.fieldname, validators.normalise_phone(value))
+
 	def apply_same_as_current_address(self) -> None:
 		if self.same_as_current_address:
 			self.permanent_address = self.current_address
@@ -196,9 +207,20 @@ class OnboardingApplicant(Document):
 			if row.from_date and getdate(row.from_date) > getdate(today()):
 				frappe.throw(_("Row #{0}: From Date cannot be in the future.").format(row.idx))
 
-			if row.is_current_employer:
-				row.to_date = None
-			elif row.from_date and row.to_date:
+			if row.is_current_employer and row.to_date:
+				# This used to silently do `row.to_date = None`, which threw away a date
+				# the applicant had typed AND skipped the ordering check below -- so an
+				# inverted pair sailed through as long as the box was ticked. Say so
+				# instead: the two answers contradict each other and only they know which
+				# one is true.
+				frappe.throw(
+					_("Row #{0}: {1} is marked as your current employer, so it cannot have a To Date. Clear one or the other.").format(
+						row.idx, frappe.bold(row.company_name or _("this entry"))
+					),
+					title=_("Still Working There?"),
+				)
+
+			if not row.is_current_employer and row.from_date and row.to_date:
 				if getdate(row.to_date) < getdate(row.from_date):
 					frappe.throw(
 						_("Row #{0}: To Date cannot be before From Date.").format(row.idx)
@@ -216,9 +238,10 @@ class OnboardingApplicant(Document):
 		"""`depends_on` is evaluated client-side only -- there is no server handler in
 		v16 -- so an API caller can set salary_mode='Bank' with no account details.
 
-		A completeness rule, so it belongs at the submit gate, not in validate(). Since
-		`salary_mode` defaults to Bank, running it on every save would block HR from
-		even moving a half-filled record to HR Review.
+		A completeness rule, so it belongs at the submit gate, not in validate():
+		running it on every save would block HR from parking a half-filled record.
+		`salary_mode` starts empty and stays empty until somebody chooses, so an
+		untouched record never trips this.
 		"""
 		if self.salary_mode != "Bank":
 			return
@@ -298,9 +321,29 @@ class OnboardingApplicant(Document):
 					"label": row.label,
 					"is_required": row.is_required,
 					"is_editable": row.is_editable,
+					"lock_when_filled": row.lock_when_filled,
 					"help_text": row.help_text,
 				},
 			)
+
+	def field_is_editable(self, row, source=None) -> bool:
+		"""Whether the applicant may change `row` right now.
+
+		`is_editable` alone is static template policy and cannot know whether HR
+		prefilled THIS record. `lock_when_filled` resolves that per record: a value HR
+		already supplied is protected, a blank one can still be filled in.
+
+		`source` is the document the current value is read from, and callers that are
+		vetting a save MUST pass the pre-save doc. Reading `self` there would see the
+		value the applicant just typed and lock the field against the very save that
+		supplied it -- their first Aadhaar entry would be rejected as an edit of
+		something they had never been allowed to set.
+		"""
+		if not row.is_editable:
+			return False
+		if row.lock_when_filled and (source or self).get(row.fieldname):
+			return False
+		return True
 
 	def get_applicant_field_rules(self) -> dict:
 		"""Effective per-field rules for the portal, keyed by fieldname.
@@ -313,7 +356,9 @@ class OnboardingApplicant(Document):
 				fieldname=row.fieldname,
 				label=row.label,
 				is_required=row.is_required,
-				is_editable=row.is_editable,
+				is_editable=self.field_is_editable(row),
+				declared_editable=bool(row.is_editable),
+				lock_when_filled=bool(row.lock_when_filled),
 				help_text=row.help_text,
 			)
 			for row in self.applicant_fields
@@ -600,9 +645,21 @@ class OnboardingApplicant(Document):
 			if not permitted:
 				frappe.throw(_("You cannot change the status of this record."), frappe.PermissionError)
 
+		# Read the snapshot off the PRE-SAVE doc. `applicant_fields` is exempt from the
+		# diff below (the controller rewrites it), so judging the write against the
+		# snapshot carried in on the request would let a caller ship their own
+		# permissions alongside the data they wanted them for.
+		#
+		# Editability is resolved against `before` too -- see field_is_editable.
 		editable = {
-			row.fieldname for row in self.applicant_fields if row.is_editable and row.fieldname
+			row.fieldname
+			for row in before.applicant_fields
+			if row.fieldname and self.field_is_editable(row, source=before)
 		}
+		# A snapshot can only ever open a field the module already considers the
+		# applicant's to write. Belt and braces against a hand-edited row.
+		editable &= APPLICANT_WRITABLE_FIELDS | APPLICANT_SHOWABLE_CHILD_TABLES
+
 		writable = editable | APPLICANT_SELF_MANAGED_FIELDS
 		if self.status != before.status:
 			# Already vetted above; without this the generic diff below would flag the
@@ -612,8 +669,12 @@ class OnboardingApplicant(Document):
 
 		for df in self.meta.fields:
 			if df.fieldtype in table_fields:
-				# `documents` is theirs to add to; everything else is HR's or derived.
-				if df.fieldname not in {"documents"} | APPLICANT_SYSTEM_CHILD_TABLES:
+				# `documents` is theirs to add to; the repeating tables are theirs only
+				# where the snapshot said so; everything else is HR's or derived.
+				allowed_tables = {"documents"} | APPLICANT_SYSTEM_CHILD_TABLES | (
+					editable & APPLICANT_SHOWABLE_CHILD_TABLES
+				)
+				if df.fieldname not in allowed_tables:
 					if _table_signature(self, df.fieldname) != _table_signature(before, df.fieldname):
 						changed.append(df.fieldname)
 				continue
@@ -691,6 +752,37 @@ class OnboardingApplicant(Document):
 				+ "</li></ul>",
 				title=_("Documents Missing"),
 			)
+
+	def validate_required_applicant_fields(self) -> None:
+		"""Every field the template marked Required must actually hold a value.
+
+		This is not a second copy of the applicant's own completeness check -- it covers
+		the path that check never runs on. `portal_submit` only fires when the applicant
+		hands the form back; HR can set the status straight to Ready to Onboard and
+		submit without them ever opening it. A template Required flag would then mean
+		nothing, and the omission would surface later as an unexplained missing Employee
+		field, or not at all.
+
+		A Required field is always at least nominally editable -- the template refuses
+		Required-without-Editable -- and `lock_when_filled` only closes a field that
+		already HAS a value, so nothing reported here is ever unfixable: HR fills it in,
+		or sends the record back to the applicant.
+		"""
+		missing = [
+			row.label or row.fieldname
+			for row in self.applicant_fields
+			if row.is_required and row.fieldname and not self.get(row.fieldname)
+		]
+		if not missing:
+			return
+
+		frappe.throw(
+			_("The onboarding template asks for these, and they are still empty:")
+			+ "<ul><li>"
+			+ "</li><li>".join(frappe.utils.escape_html(name) for name in missing)
+			+ "</li></ul>",
+			title=_("Details Missing"),
+		)
 
 	def validate_employee_number_for_naming(self) -> None:
 		"""HR supplies the Employee ID, but it is only used when HR Settings names

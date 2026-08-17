@@ -16,7 +16,12 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from possibleworks.onboarding.constants import APPLICANT_WRITABLE_FIELDS, DOCTYPE
+from possibleworks.onboarding.constants import (
+	APPLICANT_READONLY_FIELDS,
+	APPLICANT_SHOWABLE_CHILD_TABLES,
+	APPLICANT_TEMPLATE_FIELDS,
+	DOCTYPE,
+)
 from possibleworks.onboarding.validators import (
 	InvalidFileExtensionError,
 	normalise_extension_list,
@@ -61,12 +66,13 @@ class OnboardingDocumentTemplate(Document):
 	def validate_applicant_fields(self) -> None:
 		"""Keep the form definition honest against the security model.
 
-		Only fields in APPLICANT_WRITABLE_FIELDS may be offered. Anything else -- say
+		Only fields in APPLICANT_TEMPLATE_FIELDS may be offered. Anything else -- say
 		`date_of_joining` -- would be rejected by the mass-assignment allowlist when the
 		applicant saved, leaving them with a form they can fill but never submit.
 		"""
 		meta = frappe.get_meta(DOCTYPE)
 		seen: dict[str, int] = {}
+		forced_readonly: list[str] = []
 
 		for row in self.applicant_fields:
 			if row.fieldname in seen:
@@ -78,7 +84,7 @@ class OnboardingDocumentTemplate(Document):
 				)
 			seen[row.fieldname] = row.idx
 
-			if row.fieldname not in APPLICANT_WRITABLE_FIELDS:
+			if row.fieldname not in APPLICANT_TEMPLATE_FIELDS:
 				frappe.throw(
 					_("Row #{0}: {1} cannot be shown to applicants. Only fields the applicant is allowed to fill in may be listed here.").format(
 						row.idx, frappe.bold(row.fieldname)
@@ -98,6 +104,16 @@ class OnboardingDocumentTemplate(Document):
 			# will actually see.
 			row.label = df.label
 
+			if row.fieldname in APPLICANT_READONLY_FIELDS:
+				# Corrected rather than rejected: these are worth SHOWING, and the only
+				# wrong part of the row is a flag HR had no reason to know was unsafe.
+				if row.is_editable or row.is_required or row.lock_when_filled:
+					forced_readonly.append(row.label or row.fieldname)
+				row.is_editable = 0
+				row.is_required = 0
+				row.lock_when_filled = 0
+				continue
+
 			if row.is_required and not row.is_editable:
 				frappe.throw(
 					_("Row #{0} ({1}): a field cannot be Required if it is not Editable -- the applicant would have no way to fill it in.").format(
@@ -105,6 +121,25 @@ class OnboardingDocumentTemplate(Document):
 					),
 					title=_("Unsatisfiable Requirement"),
 				)
+
+			if row.lock_when_filled and row.fieldname in APPLICANT_SHOWABLE_CHILD_TABLES:
+				frappe.throw(
+					_("Row #{0} ({1}): Lock Once Provided applies to single values, not to a list of rows.").format(
+						row.idx, frappe.bold(row.label or row.fieldname)
+					),
+					title=_("Not Applicable"),
+				)
+
+		if forced_readonly:
+			frappe.msgprint(
+				_("These fields are shown to the applicant but can never be edited by them, so their flags were cleared:")
+				+ "<ul><li>"
+				+ "</li><li>".join(frappe.utils.escape_html(name) for name in forced_readonly)
+				+ "</li></ul>"
+				+ _("Personal Email is the address the applicant's login is tied to. Change it here on the record instead."),
+				title=_("Display Only"),
+				indicator="blue",
+			)
 
 	def warn_about_disabled_required_rows(self) -> None:
 		"""Flag rows ticked Required but left disabled.

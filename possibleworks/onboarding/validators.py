@@ -69,6 +69,44 @@ def normalise_pan(pan: str | None) -> str:
 	return normalise_code(pan)
 
 
+# A leading dialling code, then anything. ISDs run 1-4 digits.
+_ISD_PREFIX = re.compile(r"^\s*\+\s*(\d{1,4})[\s\-./]*(.*)$", re.DOTALL)
+
+
+def normalise_phone(value: str | None) -> str:
+	"""Canonicalise to `+<isd>-<digits>`, the one shape the Desk control can read back.
+
+	This is not cosmetic. `ControlPhone.set_formatted_input`
+	(frappe/public/js/frappe/form/controls/phone.js:150) splits the stored value on a
+	HYPHEN and requires exactly two parts:
+
+	    if (value.includes("-") && value.split("-").length == 2) {
+	        this.$input.val(value.split("-").pop());        // strips the code for display
+	    } else if (this.$isd.text().trim() && this.value) {
+	        this.set_value(this.$isd.text() + "-" + value); // PREPENDS the code again
+	    }
+
+	So `+91 9876543210` -- valid to the server, and what a space-separated writer
+	produces -- misses the first branch, falls into the second, and comes back as
+	`+91-+91 9876543210`. Any separator OTHER than a single hyphen has the same effect,
+	including a number written `98765-43210`, which makes three parts rather than two.
+
+	A value with no dialling code is returned untouched: inventing one would be
+	guessing at somebody's country, and `validate_phone_number_with_country_code` gives
+	a far better error than a wrong guess would.
+	"""
+	if not value:
+		return ""
+
+	match = _ISD_PREFIX.match(str(value))
+	if not match:
+		return str(value).strip()
+
+	isd, rest = match.groups()
+	digits = _NON_DIGIT.sub("", rest)
+	return f"+{isd}-{digits}" if digits else f"+{isd}"
+
+
 # --------------------------------------------------------------------------- #
 # Verhoeff checksum (the dihedral-group D5 scheme UIDAI uses for Aadhaar)
 # --------------------------------------------------------------------------- #

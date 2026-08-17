@@ -14,6 +14,12 @@ class OnboardingTemplateField(Document):
 
 	Absent from the list means the field is hidden from the applicant entirely; present
 	but not editable means shown read-only.
+
+	Editability has three states, because two were not enough. A flat Editable flag is
+	static policy and cannot see whether THIS record already has a value -- so a field
+	HR sometimes prefills (Aadhaar, PAN) had to be either always overwritable or never
+	fillable. `lock_when_filled` resolves per record instead: editable while empty,
+	read-only once provided.
 	"""
 
 	pass

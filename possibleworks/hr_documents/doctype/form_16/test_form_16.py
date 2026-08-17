@@ -11,6 +11,7 @@ from erpnext.setup.doctype.employee.test_employee import make_employee
 
 from hrms.hr.utils import DuplicateDeclarationError
 from possibleworks.hr_documents.api import download_form16_document, list_form16, list_form16_documents
+from possibleworks.tests.site_fixtures import site_mandatory_values
 
 PAYROLL_PERIOD_NAME = "_Test Form16 Period"
 PAYROLL_PERIOD_START = "2022-01-01"
@@ -97,7 +98,11 @@ def make_form16_employee(user, **kwargs):
 	hardcoding, so this suite works on a customised site and a vanilla one alike.
 	"""
 	meta = frappe.get_meta("Employee")
-	extra = {}
+
+	# Everything this site made mandatory, whatever it is. Two probation-date Custom
+	# Fields appeared on hw-hris and took this whole suite out; naming the fields one by
+	# one only ever works until the next customisation.
+	extra = site_mandatory_values("Employee", exclude=("employee_number", "reports_to"))
 
 	employee_number = meta.get_field("employee_number")
 	if employee_number and employee_number.reqd:
