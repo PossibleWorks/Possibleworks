@@ -79,7 +79,11 @@
 
 			{% if editable and progress.required %}
 			<div class="ob-progress" aria-label="{{ _('Completion') }}" data-required="{{ progress.required }}">
-				<div class="ob-progress-bar"><span id="ob-progress-fill" style="width: {{ progress.percent }}%"></span></div>
+				{# The starting width is a data attribute rather than an inline style, so the
+				   fill is set in exactly one place (the script, which owns it from then on)
+				   instead of two. It also keeps Jinja out of a `style` attribute, which no
+				   CSS parser can read -- editors flag `width: {{ ... }}` as a syntax error. #}
+				<div class="ob-progress-bar"><span id="ob-progress-fill" data-percent="{{ progress.percent }}"></span></div>
 				<p class="ob-progress-text">
 					<b id="ob-done">{{ progress.done }}</b> {{ _("of") }} {{ progress.required }} {{ _("required items complete") }}
 				</p>
@@ -338,7 +342,7 @@
 	height: 5px; border-radius: 99px; background: var(--rule); overflow: hidden;
 }
 .ob-progress-bar span {
-	display: block; height: 100%; border-radius: 99px; background: var(--accent);
+	display: block; height: 100%; width: 0; border-radius: 99px; background: var(--accent);
 	transition: width .5s cubic-bezier(.4,0,.2,1);
 }
 .ob-progress-text { font-size: 12.5px; color: var(--ink-soft); margin: 9px 0 0; }
@@ -778,6 +782,14 @@ frappe.ready(() => {
 
 	form.addEventListener("input", refresh_state);
 	form.addEventListener("change", refresh_state);
+
+	// Paint the server's figure once on load. The bar starts at zero in CSS, so this is
+	// what fills it -- and the existing width transition turns that into the bar growing
+	// to its position rather than a jump.
+	(() => {
+		const fill = $("#ob-progress-fill");
+		if (fill) fill.style.width = `${Number(fill.dataset.percent || 0)}%`;
+	})();
 
 	/* ---- date picker -----------------------------------------------------
 	   Replaces <input type="date">. The native panel is unstyleable, and it opens on

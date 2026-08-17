@@ -19,9 +19,10 @@ signature covers the expiry so it cannot be extended by editing the URL.
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import add_days, get_url, getdate, now_datetime, get_datetime
+from frappe.utils import add_days, format_datetime, get_url, getdate, now_datetime, get_datetime
 from frappe.utils.verified_command import get_signed_params, verify_request
 
+from possibleworks.utils.branded_email import render_branded_email
 from possibleworks.onboarding.constants import (
 	APPLICANT_CHILD_TABLE_COLUMNS,
 	APPLICANT_EDITABLE_STATUSES,
@@ -151,6 +152,35 @@ def get_invite_link(name: str) -> dict:
 	return {"link": build_invite_url(doc.name, doc.invite_expires_on), "expires_on": doc.invite_expires_on}
 
 
+def build_invite_email(doc, link: str) -> str:
+	"""The invite body, separate from sending so it can be asserted on in a test.
+
+	`invite_expires_on` is formatted rather than printed straight from the field: the raw
+	value reads as `2026-08-18 00:00:00`, which is a database timestamp shown to someone
+	who does not work here.
+	"""
+	return render_branded_email(
+		heading=_("Dear {0},").format(doc.first_name or doc.applicant_name),
+		paragraphs=[
+			_(
+				"Please complete your onboarding details using the secure link below. "
+				"It is personal to you, so do not forward it."
+			)
+		],
+		cta={
+			"label": _("Open my onboarding form"),
+			"url": link,
+			"fallback": _("If the button does not open, copy this link into your browser:"),
+		},
+		notes=[_("The link stops working on {0}.").format(format_datetime(doc.invite_expires_on))],
+		signoff=[_("Best regards,"), _("HR Team")],
+		footer_note=_(
+			"This email was sent from an unmonitored mailbox. You are receiving it because "
+			"you are joining {0}."
+		).format(doc.company),
+	)
+
+
 def send_invite_email(doc, link: str) -> bool:
 	"""Email the link, reporting honestly whether it actually went out.
 
@@ -164,13 +194,7 @@ def send_invite_email(doc, link: str) -> bool:
 		frappe.sendmail(
 			recipients=[doc.personal_email],
 			subject=_("Complete your onboarding for {0}").format(doc.company),
-			message=_(
-				"<p>Hello {0},</p>"
-				"<p>Please complete your onboarding details using the secure link below. "
-				"It is personal to you, so do not forward it.</p>"
-				"<p><a href='{1}'>Open my onboarding form</a></p>"
-				"<p>The link stops working on {2}.</p>"
-			).format(doc.first_name or doc.applicant_name, link, doc.invite_expires_on),
+			message=build_invite_email(doc, link),
 			now=True,
 		)
 		return True

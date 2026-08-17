@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
-from frappe.utils import add_days, now_datetime, today
+from frappe.utils import add_days, format_datetime, now_datetime, today
 
 from possibleworks.observer.observer import WorkflowEventObserver
 from possibleworks.onboarding import portal
@@ -26,6 +26,7 @@ from possibleworks.onboarding.constants import (
 )
 from possibleworks.onboarding.validators import normalise_phone, verhoeff_check_digit
 from possibleworks.tests.site_fixtures import sample_value_for
+from possibleworks.utils.branded_email import BRAND_LOGO_URL, render_branded_email
 from possibleworks.www import onboarding as onboarding_page
 
 
@@ -214,6 +215,42 @@ class TestOnboardingPortal(IntegrationTestCase):
 
 		doc.reload()
 		self.assertIsNone(doc.invite_expires_on)
+
+	# ------------------------------------------------------------------ #
+	# Invite email body
+	# ------------------------------------------------------------------ #
+
+	def test_invite_email_carries_the_signed_link_and_a_readable_expiry(self):
+		doc = self.invited()
+		link = portal.build_invite_url(doc.name, doc.invite_expires_on)
+
+		body = portal.build_invite_email(doc, link)
+
+		self.assertIn(f'href="{link}"', body, "the call to action must point at the signed link")
+		self.assertIn("Open my onboarding form", body)
+		self.assertIn(doc.first_name, body)
+		self.assertIn(format_datetime(doc.invite_expires_on), body)
+		self.assertNotIn(
+			str(doc.invite_expires_on), body, "the raw database timestamp should never be shown"
+		)
+
+	def test_invite_email_is_branded_and_survives_frappes_paragraph_wrapper(self):
+		"""sendmail drops `message` into <p>{{ content }}</p>, so no document tags."""
+		doc = self.invited()
+
+		body = portal.build_invite_email(doc, portal.build_invite_url(doc.name, doc.invite_expires_on))
+
+		self.assertIn(BRAND_LOGO_URL, body)
+		self.assertIn("#eaf1fe", body, "the branded card background is the theme's tell")
+		for tag in ("<html", "<body", "<head", "<!DOCTYPE"):
+			self.assertNotIn(tag, body, f"{tag} cannot be nested inside a paragraph")
+
+	def test_branded_shell_escapes_text_it_is_given(self):
+		"""Frappe's Jinja runs with autoescape off and applicants supply their own names."""
+		body = render_branded_email(heading="Dear <script>alert(1)</script>,")
+
+		self.assertNotIn("<script>", body)
+		self.assertIn("&lt;script&gt;", body)
 
 	# ------------------------------------------------------------------ #
 	# Access scoping -- the part that matters
