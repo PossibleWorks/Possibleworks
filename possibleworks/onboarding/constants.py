@@ -98,7 +98,6 @@ APPLICANT_WRITABLE_FIELDS = frozenset({
 	"blood_group",
 	"image",
 	# Contact
-	"personal_email",
 	"cell_number",
 	# Statutory identifiers
 	"aadhar_number",
@@ -125,6 +124,21 @@ APPLICANT_WRITABLE_FIELDS = frozenset({
 	"provident_fund_account",
 })
 
+# Fields a template may SHOW the applicant but which nobody may ever let them change.
+#
+# `personal_email` is the identity the whole portal is keyed on. `applicant_user` is
+# written exactly once, when HR sends the invite, and nothing re-syncs it afterwards --
+# so an applicant editing this field would:
+#   * detach the record from the login without either side noticing;
+#   * skip the "already belongs to a system user" guard, which only runs on the
+#     account-creation path that a re-invite then short-circuits; and
+#   * put an unverified, applicant-chosen address onto the Employee.
+# Displaying it is useful ("this is the address we have for you"); writing it is not.
+APPLICANT_READONLY_FIELDS = frozenset({"personal_email"})
+
+# Everything a template's Fields section may list, editable or not.
+APPLICANT_SHOWABLE_FIELDS = APPLICANT_WRITABLE_FIELDS | APPLICANT_READONLY_FIELDS
+
 # Set by before_validate() or by our own API, never accepted from the caller, but
 # they do legitimately change during an applicant write so the diff must allow them.
 APPLICANT_SELF_MANAGED_FIELDS = frozenset({
@@ -141,6 +155,42 @@ APPLICANT_WRITABLE_CHILD_TABLES = frozenset({
 	"documents",
 	"pending_employee_fields",
 })
+
+# Child tables a template's Fields section may offer, and which the portal renders as
+# repeating rows. `documents` is excluded because it has its own section on both the
+# template and the portal; `pending_employee_fields` is HR's, not the applicant's.
+APPLICANT_SHOWABLE_CHILD_TABLES = frozenset({"education", "external_work_history"})
+
+# Everything the template picker may list, scalar or table.
+APPLICANT_TEMPLATE_FIELDS = APPLICANT_SHOWABLE_FIELDS | APPLICANT_SHOWABLE_CHILD_TABLES
+
+# Which child fields the portal collects for each table, in display order. An explicit
+# allowlist rather than "every field on the child doctype": these child rows carry
+# intake-only extras (certificate/relieving-letter Attach fields) that need a different
+# control, and a blanket render would silently start asking for them the day one is
+# added upstream.
+#
+# `total_experience` is deliberately absent: it is derived by
+# `OnboardingApplicantWorkHistory.set_total_experience()` from the dates below, and
+# collecting it would let the applicant contradict the value the controller computes.
+APPLICANT_CHILD_TABLE_COLUMNS = {
+	"education": (
+		"school_univ",
+		"qualification",
+		"level",
+		"year_of_passing",
+		"class_per",
+		"is_highest_qualification",
+	),
+	"external_work_history": (
+		"company_name",
+		"designation",
+		"from_date",
+		"to_date",
+		"is_current_employer",
+		"reason_for_leaving",
+	),
+}
 
 # Derived by the controller, never supplied by any caller. `required_documents` is a
 # snapshot of the selected template, and `document_template` -- the only thing that can

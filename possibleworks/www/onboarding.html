@@ -3,6 +3,63 @@
 {% block title %}{{ _("Your Onboarding") }}{% endblock %}
 
 {% block page_content %}
+
+{#- One entry of a repeating table. Used for both the saved rows and the blank
+    <template> the Add button clones, so the two can never drift apart. -#}
+{% macro ob_row(t, r, page_editable) %}
+{% set locked = not t.editable or not page_editable %}
+<div class="ob-row">
+	<div class="ob-grid">
+	{% for c in t.columns %}
+		<div class="ob-field {% if c.fieldtype in ('Small Text','Text','Long Text') %}ob-field--wide{% endif %}">
+			<label class="ob-label">{{ c.label }}</label>
+			{% if c.fieldtype == "Select" %}
+				<div class="ob-selectwrap">
+					<select data-col="{{ c.fieldname }}" class="ob-input" {% if locked %}disabled{% endif %}>
+						{% for opt in c.options_list %}
+						<option value="{{ opt }}" {% if opt == r.get(c.fieldname) %}selected{% endif %}>{{ opt or _("Choose…") }}</option>
+						{% endfor %}
+					</select>
+				</div>
+			{% elif c.fieldtype == "Check" %}
+				<label class="ob-check">
+					<input type="checkbox" data-col="{{ c.fieldname }}"
+						{% if r.get(c.fieldname) %}checked{% endif %} {% if locked %}disabled{% endif %}>
+					<span>{{ _("Yes") }}</span>
+				</label>
+			{% elif c.fieldtype in ("Small Text", "Text", "Long Text") %}
+				<textarea data-col="{{ c.fieldname }}" class="ob-input" rows="2"
+					{% if locked %}disabled{% endif %}>{{ r.get(c.fieldname) or "" }}</textarea>
+			{% elif c.fieldtype == "Date" %}
+				<div class="ob-datewrap">
+					<input data-col="{{ c.fieldname }}" class="ob-input ob-date" type="text"
+						inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy"
+						data-iso="{{ r.get(c.fieldname) or '' }}"
+						value="{{ frappe.format(r.get(c.fieldname), {'fieldtype': 'Date'}) if r.get(c.fieldname) else '' }}"
+						{% if locked %}disabled{% endif %}>
+					<svg class="ob-date-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
+						stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+						<rect x="3" y="5" width="18" height="16" rx="2"/>
+						<path d="M8 3v4M16 3v4M3 10h18"/>
+					</svg>
+				</div>
+			{% elif c.fieldtype == "Int" %}
+				<input data-col="{{ c.fieldname }}" class="ob-input" type="number" step="1"
+					value="{{ r.get(c.fieldname) if r.get(c.fieldname) else '' }}"
+					{% if locked %}disabled{% endif %}>
+			{% else %}
+				<input data-col="{{ c.fieldname }}" class="ob-input" type="text"
+					value="{{ r.get(c.fieldname) or '' }}" {% if locked %}disabled{% endif %}>
+			{% endif %}
+		</div>
+	{% endfor %}
+	</div>
+	{% if not locked %}
+	<button type="button" class="ob-row-remove" aria-label="{{ _('Remove this entry') }}">{{ _("Remove") }}</button>
+	{% endif %}
+</div>
+{% endmacro %}
+
 <div class="ob">
 
 {% if error %}
@@ -21,8 +78,12 @@
 			<p class="ob-lede">{{ _("A few details before your first day") }}{% if doc.date_of_joining %}, <span class="ob-date">{{ frappe.format(doc.date_of_joining, {"fieldtype": "Date"}) }}</span>{% endif %}.</p>
 
 			{% if editable and progress.required %}
-			<div class="ob-progress" aria-label="{{ _('Completion') }}">
-				<div class="ob-progress-bar"><span style="width: {{ progress.percent }}%"></span></div>
+			<div class="ob-progress" aria-label="{{ _('Completion') }}" data-required="{{ progress.required }}">
+				{# The starting width is a data attribute rather than an inline style, so the
+				   fill is set in exactly one place (the script, which owns it from then on)
+				   instead of two. It also keeps Jinja out of a `style` attribute, which no
+				   CSS parser can read -- editors flag `width: {{ ... }}` as a syntax error. #}
+				<div class="ob-progress-bar"><span id="ob-progress-fill" data-percent="{{ progress.percent }}"></span></div>
 				<p class="ob-progress-text">
 					<b id="ob-done">{{ progress.done }}</b> {{ _("of") }} {{ progress.required }} {{ _("required items complete") }}
 				</p>
@@ -60,10 +121,26 @@
 
 					{% if not f.editable %}
 						<div class="ob-locked">
-							<span>{{ f.value or "—" }}</span>
+							<span>{% if f.fieldtype == "Date" and f.value %}{{ frappe.format(f.value, {"fieldtype": "Date"}) }}{% else %}{{ f.value or "—" }}{% endif %}</span>
 							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
 							</svg>
+						</div>
+						{% if f.locked_reason %}<p class="ob-hint ob-hint--lock">{{ f.locked_reason }}</p>{% endif %}
+					{% elif f.fieldtype == "Phone" %}
+						{# A Phone must carry a dialling code: the server parses it with no
+						   default region, so a bare 10-digit number is rejected outright. #}
+						<div class="ob-phone" data-phone="{{ f.fieldname }}">
+							<select class="ob-input ob-phone-cc" aria-label="{{ _('Country code') }}"
+								{% if not editable %}disabled{% endif %}>
+								{% for c in country_codes %}
+								<option value="{{ c.isd }}" {% if c.isd == f.value_isd %}selected{% endif %}>{{ c.name }} ({{ c.isd }})</option>
+								{% endfor %}
+							</select>
+							<input id="f-{{ f.fieldname }}" name="{{ f.fieldname }}"
+								class="ob-input ob-phone-number" type="tel" inputmode="tel"
+								autocomplete="tel-national" value="{{ f.value_number or '' }}"
+								{% if not editable %}disabled{% endif %}>
 						</div>
 					{% elif f.fieldtype == "Select" %}
 						<div class="ob-selectwrap">
@@ -113,17 +190,42 @@
 		</section>
 		{% endif %}
 
+		{# ---- repeating rows: education, work experience ---------------------- #}
+		{% for t in tables %}
+		<section class="ob-card ob-table" data-table="{{ t.fieldname }}">
+			<h2 class="ob-h2">
+				{{ _(t.label) }}{% if t.required %}<span class="ob-star">*</span>{% endif %}
+			</h2>
+			{% if t.help_text %}<p class="ob-hint">{{ t.help_text }}</p>{% endif %}
+
+			<div class="ob-rows">
+			{% for r in t.rows %}{{ ob_row(t, r, editable) }}{% endfor %}
+			</div>
+
+			<p class="ob-rows-empty {% if t.rows %}is-hidden{% endif %}">{{ _("Nothing added yet.") }}</p>
+
+			{% if t.editable and editable %}
+			{# The blank row is rendered by the SAME macro as the saved ones, so an added
+			   entry can never drift from an existing one as columns change. #}
+			<template class="ob-row-template">{{ ob_row(t, {}, editable) }}</template>
+			<button type="button" class="ob-row-add">+ {{ _("Add entry") }}</button>
+			{% endif %}
+		</section>
+		{% endfor %}
+
 		{% if documents %}
 		<section class="ob-card">
 			<h2 class="ob-h2">{{ _("Your documents") }}</h2>
 			<div class="ob-docs">
 			{% for d in documents %}
-				<div class="ob-doc {% if d.files %}is-done{% endif %}" data-document-type="{{ d.document_type }}">
+				{# `is-done` and the drop label's visibility are both toggled by script after
+				   an upload or a removal, so the initial render only sets the starting
+				   state -- it is never the only thing that can produce it. #}
+				<div class="ob-doc {% if d.files %}is-done{% endif %}" data-document-type="{{ d.document_type }}"
+					data-allow-multiple="{{ 1 if d.allow_multiple else 0 }}">
 					<div class="ob-doc-top">
 						<span class="ob-doc-tick" aria-hidden="true">
-							{% if d.files %}
 							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
-							{% endif %}
 						</span>
 						<div class="ob-doc-name">
 							{{ d.document_type }}{% if d.required %}<span class="ob-star">*</span>{% endif %}
@@ -133,6 +235,7 @@
 
 					{% if d.instructions %}<p class="ob-hint">{{ d.instructions }}</p>{% endif %}
 
+					<div class="ob-files">
 					{% for file in d.files %}
 						<div class="ob-file">
 							<a href="{{ file.file_url }}" target="_blank" rel="noopener">{{ file.file_name }}</a>
@@ -142,12 +245,14 @@
 							{% endif %}
 						</div>
 					{% endfor %}
+					</div>
 
-					{% if editable and (d.allow_multiple or not d.files) %}
-						<label class="ob-drop">
+					{% if editable %}
+						<label class="ob-drop {% if d.files and not d.allow_multiple %}is-hidden{% endif %}">
 							<input type="file" class="ob-upload" data-document-type="{{ d.document_type }}"
 								{% if d.allowed_extensions %}accept=".{{ d.allowed_extensions.replace(',', ',.') }}"{% endif %}>
-							<span class="ob-drop-main">
+							<span class="ob-drop-main"
+								data-first="{{ _('Choose a file') }}" data-more="{{ _('Add another') }}">
 								{% if d.files %}{{ _("Add another") }}{% else %}{{ _("Choose a file") }}{% endif %}
 							</span>
 							{% if d.allowed_extensions %}
@@ -237,7 +342,7 @@
 	height: 5px; border-radius: 99px; background: var(--rule); overflow: hidden;
 }
 .ob-progress-bar span {
-	display: block; height: 100%; border-radius: 99px; background: var(--accent);
+	display: block; height: 100%; width: 0; border-radius: 99px; background: var(--accent);
 	transition: width .5s cubic-bezier(.4,0,.2,1);
 }
 .ob-progress-text { font-size: 12.5px; color: var(--ink-soft); margin: 9px 0 0; }
@@ -371,7 +476,8 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 }
 .ob-doc.is-done { border-color: #cfe3db; background: #fafdfb; }
 .ob-doc-top { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.ob-doc > .ob-hint, .ob-doc > .ob-file { grid-column: 1 / -1; }
+.ob-doc > .ob-hint, .ob-doc > .ob-files { grid-column: 1 / -1; }
+.ob-doc > .ob-files:empty { display: none; }
 @media (max-width: 560px) {
 	.ob-doc { grid-template-columns: 1fr; }
 	.ob-doc > .ob-drop { grid-column: 1 / -1; }
@@ -380,7 +486,11 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 	width: 19px; height: 19px; flex: none; border-radius: 50%;
 	border: 1.5px solid var(--rule); display: grid; place-items: center; color: #fff;
 }
+/* The tick is always in the markup and revealed by state, so script can flip a card to
+   done without having to build an SVG. */
+.ob-doc-tick svg { display: none; }
 .ob-doc.is-done .ob-doc-tick { background: var(--accent); border-color: var(--accent); }
+.ob-doc.is-done .ob-doc-tick svg { display: block; }
 .ob-doc-name { font-size: 14px; font-weight: 600; }
 .ob-optional {
 	font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: .07em;
@@ -409,7 +519,50 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 .ob-drop input { display: none; }
 .ob-drop-main { font-size: 13px; font-weight: 600; color: var(--accent); }
 .ob-drop-sub { font-size: 10.5px; color: var(--ink-soft); letter-spacing: .03em; }
+/* `.is-hidden` is declared earlier in the sheet, so on equal specificity these
+   display-carrying rules would win it. Restate it where it has to bite. */
+.ob-drop.is-hidden, .ob-rows-empty.is-hidden { display: none; }
 @media (max-width: 560px) { .ob-drop { justify-content: center; } }
+
+/* --- phone ---------------------------------------------------------------
+   The dialling code is a control, not decoration: without it the value fails
+   `validate_phone_number_with_country_code` server-side and there is no way for the
+   applicant to see why. */
+.ob-phone { display: grid; grid-template-columns: minmax(0, 8.5rem) 1fr; gap: 8px; }
+.ob-phone-cc {
+	appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%236b6459' stroke-width='1.6'/></svg>");
+	background-repeat: no-repeat; background-position: right 11px center;
+	padding-right: 28px; text-overflow: ellipsis;
+}
+@media (max-width: 560px) { .ob-phone { grid-template-columns: 1fr; } }
+
+/* --- repeating rows ------------------------------------------------------
+   Education and previous jobs are lists, not single answers. Each entry gets its own
+   bordered block so it reads as one item rather than a wall of inputs. */
+.ob-rows { display: grid; gap: 12px; }
+.ob-row {
+	position: relative; padding: 15px 16px 13px;
+	border: 1px solid var(--rule); border-radius: 11px; background: #fdfcfa;
+}
+.ob-row .ob-grid { margin: 0; }
+.ob-row-remove {
+	position: absolute; top: 9px; right: 11px;
+	border: 0; background: none; padding: 2px 5px; border-radius: 6px; cursor: pointer;
+	font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+	color: var(--ink-soft); transition: color .15s, background .15s;
+}
+.ob-row-remove:hover { color: var(--star); background: #fbeceb; }
+.ob-rows-empty { font-size: 12.5px; color: var(--ink-soft); margin: 2px 0 0; font-style: italic; }
+.ob-row-add {
+	margin-top: 12px; padding: 9px 15px; cursor: pointer;
+	font-family: inherit; font-size: 13px; font-weight: 600; color: var(--accent);
+	background: none; border: 1.5px dashed #ddd6c8; border-radius: 8px;
+	transition: border-color .18s, background .18s;
+}
+.ob-row-add:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+/* A padlock with no reason next to it reads as a bug rather than a policy. */
+.ob-hint--lock { font-style: italic; }
 
 /* --- sticky actions ----------------------------------------------------- */
 .ob-bar {
@@ -445,12 +598,11 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 body.ob-page .modal-backdrop.show { background: #17150f; opacity: .38; }
 body.ob-page .modal-dialog { max-width: 470px; margin-top: 12vh; }
 body.ob-page .modal-content {
-	border: 1px solid #e8e3d9; border-radius: 15px; overflow: hidden;
-	background: #fff; box-shadow: 0 18px 44px -12px rgba(23,21,15,.30);
-	animation: ob-pop .26s cubic-bezier(.22,.9,.3,1);
+	border: 1px solid #e8e3d9; border-radius: 10px; overflow: hidden;
+	background: #fff; box-shadow: 0 10px 30px -12px rgba(23,21,15,.24);
 }
 body.ob-page .modal-header {
-	padding: 20px 22px 14px; border-bottom: 1px solid #f0ece3; align-items: flex-start;
+	padding: 18px 22px 12px; border-bottom: 1px solid #f0ece3; align-items: flex-start;
 }
 body.ob-page .modal-title {
 	font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -470,16 +622,12 @@ body.ob-page .modal-footer .btn {
 body.ob-page .modal-footer .btn-primary { background: #1f5f4f; border-color: #1f5f4f; }
 body.ob-page .modal-footer .btn-primary:hover { background: #17493c; border-color: #17493c; }
 
-/* A coloured rule reads as "something needs you" faster than any wording can.
-   The portal's msgprint markup carries no `.indicator`, so there is no state class to
-   branch on -- but every dialog here IS an attention state (validation errors, failed
-   uploads); successes use show_alert instead. So one accent is both simpler and true. */
-body.ob-page .modal-content { border-top: 3px solid #b4342a; }
+/* No accent rule and no entrance animation. The portal's msgprint markup carries no
+   `.indicator`, so a coloured edge would have to be one fixed colour for every dialog --
+   which made "Saved" look identical to a validation failure. The message itself says
+   what happened; the popup just holds it. */
 body.ob-page .modal-body .msgprint { margin: 0; }
 body.ob-page .modal-footer.hidden { display: none !important; }
-
-@keyframes ob-pop { from { opacity: 0; transform: translateY(-10px) scale(.985); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { body.ob-page .modal-content { animation: none; } }
 
 /* One orchestrated entrance rather than scattered micro-animations. */
 .ob-hero, .ob-note, .ob-card { animation: ob-rise .5s cubic-bezier(.22,.8,.3,1) backwards; }
@@ -488,8 +636,10 @@ body.ob-page .modal-footer.hidden { display: none !important; }
 .ob-card:nth-of-type(2) { animation-delay: .16s; }
 .ob-card:nth-of-type(3) { animation-delay: .22s; }
 @keyframes ob-rise { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+/* Still used by the date picker popover, which does need to feel attached to its input. */
+@keyframes ob-pop { from { opacity: 0; transform: translateY(-10px) scale(.985); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-	.ob-hero, .ob-note, .ob-card { animation: none; }
+	.ob-hero, .ob-note, .ob-card, .ob-cal { animation: none; }
 	.ob-progress-bar span { transition: none; }
 }
 </style>
@@ -497,6 +647,7 @@ body.ob-page .modal-footer.hidden { display: none !important; }
 <script>
 frappe.ready(() => {
 	const $ = (s, r = document) => r.querySelector(s);
+	const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
 	// Frappe appends dialogs to <body>, so the only way to reach them from page CSS is
 	// a body-level hook. Scoped to this class so Desk dialogs stay untouched.
@@ -505,19 +656,140 @@ frappe.ready(() => {
 	const form = $("#ob-form");
 	if (!form) return;
 
+	/* ---- reading the form ------------------------------------------------- */
+
+	const field_value = (el) => {
+		if (el.classList.contains("ob-date")) {
+			// The box shows dd/mm/yyyy for the reader; the server always gets ISO.
+			return el.dataset.iso || "";
+		}
+		if (el.type === "checkbox") return el.checked ? 1 : 0;
+		return el.value;
+	};
+
+	// A Phone is two controls and one value. The dialling code has to travel with the
+	// number or the server rejects it outright -- it parses with no default region.
+	//
+	// Joined with a HYPHEN, and with the number stripped to digits, because that is the
+	// only shape the Desk's own Phone control can read back: it splits on "-" and wants
+	// exactly two parts, otherwise it re-prepends the dialling code and HR sees
+	// "+91-+91 9876543210". The server normalises this too -- see
+	// validators.normalise_phone -- so this is belt and braces, not the only guard.
+	const phone_value = (wrap) => {
+		const number = (wrap.querySelector(".ob-phone-number").value || "").replace(/\D/g, "");
+		if (!number) return "";
+		const cc = wrap.querySelector(".ob-phone-cc").value || "";
+		return `${cc}-${number}`;
+	};
+
 	const collect = () => {
 		const values = {};
-		form.querySelectorAll("[name]").forEach((el) => {
-			if (el.disabled) return;
-			if (el.classList.contains("ob-date")) {
-				// The box shows dd/mm/yyyy for the reader; the server always gets ISO.
-				values[el.name] = el.dataset.iso || "";
-			} else {
-				values[el.name] = el.type === "checkbox" ? (el.checked ? 1 : 0) : el.value;
-			}
+
+		$$(".ob-phone", form).forEach((wrap) => {
+			const input = wrap.querySelector(".ob-phone-number");
+			if (!input.disabled) values[input.name] = phone_value(wrap);
 		});
+
+		$$("[name]", form).forEach((el) => {
+			if (el.disabled || el.classList.contains("ob-phone-number")) return;
+			values[el.name] = field_value(el);
+		});
+
 		return values;
 	};
+
+	// Repeating sections post the complete list they are showing, so a removed row
+	// disappears server-side without needing any row identity to match on.
+	const collect_tables = () => {
+		const tables = {};
+		$$(".ob-table", form).forEach((section) => {
+			if (!section.querySelector(".ob-row-add")) return; // read-only section
+			tables[section.dataset.table] = $$(".ob-row", section)
+				.filter((row) => !row.closest("template"))
+				.map((row) => {
+					const out = {};
+					$$("[data-col]", row).forEach((el) => {
+						out[el.dataset.col] = field_value(el);
+					});
+					return out;
+				});
+		});
+		return tables;
+	};
+
+	const payload = () => ({ values: collect(), tables: collect_tables() });
+
+	/* ---- what is still outstanding ----------------------------------------
+	   Computed from the live DOM rather than the page's server-rendered list, so it
+	   reflects what the applicant has typed since the page loaded. */
+
+	const label_of = (el) => {
+		const holder = el.closest(".ob-field") || el.closest(".ob-table");
+		const label = holder && holder.querySelector(".ob-label, .ob-h2");
+		return label ? label.textContent.replace("*", "").trim() : "";
+	};
+
+	const compute_missing = () => {
+		const items = [];
+
+		$$(".ob-card > .ob-grid > .ob-field", form).forEach((f) => {
+			if (!f.querySelector(".ob-star")) return;
+			const el = f.querySelector("[name]");
+			if (!el || el.disabled) return;
+			const phone = f.querySelector(".ob-phone");
+			const filled = phone ? phone_value(phone) : field_value(el);
+			if (!filled) items.push(label_of(el));
+		});
+
+		$$(".ob-table", form).forEach((section) => {
+			if (!section.querySelector(".ob-h2 .ob-star")) return;
+			const rows = $$(".ob-row", section).filter((r) => !r.closest("template"));
+			if (!rows.length) items.push(section.querySelector(".ob-h2").textContent.replace("*", "").trim());
+		});
+
+		$$(".ob-doc").forEach((doc) => {
+			if (!doc.querySelector(".ob-doc-name .ob-star")) return;
+			if (!doc.classList.contains("is-done")) items.push(doc.dataset.documentType);
+		});
+
+		return items.filter(Boolean);
+	};
+
+	const render_missing = (items) => {
+		items = items || [];
+		$("#ob-missing-list").innerHTML = items
+			.map((i) => `<li>${frappe.utils.escape_html(i)}</li>`).join("");
+		$("#ob-missing").classList.toggle("is-hidden", !items.length);
+	};
+
+	// Progress and the outstanding list are two views of one answer, so they are always
+	// recomputed together -- a document could otherwise tick green while the bar stalls.
+	const refresh_state = () => {
+		const items = compute_missing();
+		render_missing(items);
+
+		const bar = $(".ob-progress");
+		if (!bar) return items;
+
+		const required = Number(bar.dataset.required || 0);
+		const done = Math.max(0, required - items.length);
+		const fill = $("#ob-progress-fill");
+		const count = $("#ob-done");
+		if (fill) fill.style.width = `${required ? Math.round((done * 100) / required) : 100}%`;
+		if (count) count.textContent = done;
+		return items;
+	};
+
+	form.addEventListener("input", refresh_state);
+	form.addEventListener("change", refresh_state);
+
+	// Paint the server's figure once on load. The bar starts at zero in CSS, so this is
+	// what fills it -- and the existing width transition turns that into the bar growing
+	// to its position rather than a jump.
+	(() => {
+		const fill = $("#ob-progress-fill");
+		if (fill) fill.style.width = `${Number(fill.dataset.percent || 0)}%`;
+	})();
 
 	/* ---- date picker -----------------------------------------------------
 	   Replaces <input type="date">. The native panel is unstyleable, and it opens on
@@ -556,6 +828,7 @@ frappe.ready(() => {
 			input.dataset.iso = iso(d);
 			input.value = human(d);
 			close_cal();
+			refresh_state();
 		};
 
 		const render = () => {
@@ -605,7 +878,7 @@ frappe.ready(() => {
 				b.onclick = () => commit(new Date(y, m + Number(b.dataset.off), Number(b.dataset.d)));
 			});
 			cal.querySelector('[data-act="clear"]').onclick = () => {
-				input.dataset.iso = ""; input.value = ""; close_cal();
+				input.dataset.iso = ""; input.value = ""; close_cal(); refresh_state();
 			};
 			cal.querySelector('[data-act="today"]').onclick = () => commit(new Date());
 		};
@@ -613,34 +886,106 @@ frappe.ready(() => {
 		render();
 	};
 
-	form.querySelectorAll(".ob-date").forEach((input) => {
-		if (input.disabled) return;
-		input.addEventListener("focus", () => build_cal(input));
-		input.addEventListener("click", (e) => { e.stopPropagation(); build_cal(input); });
+	// Called again for rows added after load, so a new entry's dates behave like the
+	// ones that came with the page.
+	const bind_dates = (root) => {
+		$$(".ob-date", root).forEach((input) => {
+			if (input.disabled || input.dataset.bound) return;
+			input.dataset.bound = "1";
+			input.addEventListener("focus", () => build_cal(input));
+			input.addEventListener("click", (e) => { e.stopPropagation(); build_cal(input); });
 
-		// Typing a date is often faster than clicking one; accept dd/mm/yyyy too.
-		input.addEventListener("blur", () => {
-			setTimeout(() => {
-				const m = (input.value || "").match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
-				if (!m) {
-					if (!input.value.trim()) input.dataset.iso = "";
-					else if (input.dataset.iso) input.value = human(new Date(input.dataset.iso + "T00:00:00"));
-					return;
-				}
-				const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-				if (isNaN(d)) return;
-				input.dataset.iso = iso(d);
-				input.value = human(d);
-			}, 150);
+			// Typing a date is often faster than clicking one; accept dd/mm/yyyy too.
+			input.addEventListener("blur", () => {
+				setTimeout(() => {
+					const m = (input.value || "").match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+					if (!m) {
+						if (!input.value.trim()) input.dataset.iso = "";
+						else if (input.dataset.iso) input.value = human(new Date(input.dataset.iso + "T00:00:00"));
+						return;
+					}
+					const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+					if (isNaN(d)) return;
+					input.dataset.iso = iso(d);
+					input.value = human(d);
+					refresh_state();
+				}, 150);
+			});
 		});
+	};
+	bind_dates(form);
+
+	/* ---- repeating rows ---------------------------------------------------- */
+
+	const sync_rows_empty = (section) => {
+		const rows = $$(".ob-row", section).filter((r) => !r.closest("template"));
+		const empty = section.querySelector(".ob-rows-empty");
+		if (empty) empty.classList.toggle("is-hidden", rows.length > 0);
+	};
+
+	/* "Current employer" and "to date" are two answers to one question, and the server
+	   refuses a row that gives both. The Desk grid hides To Date via `depends_on`; this
+	   is the portal's equivalent, because depends_on is a Desk-only mechanism and the
+	   applicant would otherwise fill in a contradiction and only hear about it on save. */
+	const sync_current_employer = (row) => {
+		const flag = row.querySelector('[data-col="is_current_employer"]');
+		const to_date = row.querySelector('[data-col="to_date"]');
+		if (!flag || !to_date) return;
+
+		const still_there = flag.checked;
+		if (still_there) {
+			to_date.value = "";
+			to_date.dataset.iso = "";
+		}
+		to_date.disabled = still_there || flag.disabled;
+		const wrap = to_date.closest(".ob-field");
+		if (wrap) wrap.classList.toggle("is-hidden", still_there);
+	};
+
+	const sync_rows = (section) => {
+		$$(".ob-row", section)
+			.filter((r) => !r.closest("template"))
+			.forEach(sync_current_employer);
+	};
+
+	$$(".ob-table", form).forEach((section) => {
+		const add = section.querySelector(".ob-row-add");
+		const holder = section.querySelector(".ob-rows");
+		const template = section.querySelector(".ob-row-template");
+
+		if (add && holder && template) {
+			add.onclick = () => {
+				const row = template.content.firstElementChild.cloneNode(true);
+				holder.appendChild(row);
+				bind_dates(row);
+				sync_rows_empty(section);
+				sync_current_employer(row);
+				refresh_state();
+				const first = row.querySelector("input:not([type=checkbox]), select, textarea");
+				first && first.focus();
+			};
+		}
+
+		// Delegated: rows added after load need removal too.
+		section.addEventListener("click", (e) => {
+			const btn = e.target.closest(".ob-row-remove");
+			if (!btn) return;
+			btn.closest(".ob-row").remove();
+			sync_rows_empty(section);
+			refresh_state();
+		});
+
+		// Delegated for the same reason.
+		section.addEventListener("change", (e) => {
+			const flag = e.target.closest('[data-col="is_current_employer"]');
+			if (flag) sync_current_employer(flag.closest(".ob-row"));
+		});
+
+		sync_rows_empty(section);
+		sync_rows(section);
 	});
 
-	const render_missing = (items) => {
-		items = items || [];
-		$("#ob-missing-list").innerHTML = items
-			.map((i) => `<li>${frappe.utils.escape_html(i)}</li>`).join("");
-		$("#ob-missing").classList.toggle("is-hidden", !items.length);
-	};
+	/* ---- saving and submitting --------------------------------------------- */
 
 	const call = (method, args) =>
 		frappe.call({ method: `possibleworks.onboarding.portal.${method}`, args });
@@ -659,7 +1004,7 @@ frappe.ready(() => {
 	const save = $("#ob-save");
 	save && (save.onclick = () => {
 		busy(save, true, __("Saving…"));
-		call("portal_save", { values: collect() })
+		call("portal_save", payload())
 			.then((r) => {
 				render_missing(r.message && r.message.missing);
 				frappe.show_alert({ message: __("Saved"), indicator: "green" });
@@ -669,18 +1014,95 @@ frappe.ready(() => {
 
 	const submit = $("#ob-submit");
 	submit && (submit.onclick = () => {
-		if (!$("#ob-declaration").checked) {
+		// Completeness FIRST. Asking someone to tick a confirmation, then telling them
+		// eight fields are blank, makes the tick look like the problem -- and hides the
+		// list they actually needed.
+		const outstanding = refresh_state();
+		if (outstanding.length) {
+			frappe.msgprint({
+				title: __("Not Finished Yet"),
+				message:
+					__("Please complete these before submitting:") +
+					"<ul><li>" +
+					outstanding.map((i) => frappe.utils.escape_html(i)).join("</li><li>") +
+					"</li></ul>",
+				indicator: "orange",
+			});
+			$("#ob-missing").scrollIntoView({ behavior: "smooth", block: "center" });
+			return;
+		}
+
+		const declaration = $("#ob-declaration");
+		if (declaration && !declaration.checked) {
 			frappe.msgprint({
 				message: __("Please tick the confirmation before submitting."),
 				indicator: "orange",
 			});
+			declaration.closest(".ob-card").scrollIntoView({ behavior: "smooth", block: "center" });
 			return;
 		}
+
 		busy(submit, true, __("Submitting…"));
-		call("portal_submit", { values: collect(), declaration_accepted: 1 })
+		call("portal_submit", Object.assign(payload(), { declaration_accepted: 1 }))
+			// A reload is right here and only here: the form becomes read-only, so there
+			// is nothing left in the page worth preserving.
 			.then(() => window.location.reload())
 			.always(() => busy(submit, false));
 	});
+
+	/* ---- documents ---------------------------------------------------------
+	   Uploading used to reload the page, which threw away every field typed since the
+	   last save. The endpoints return enough to patch the card in place instead. */
+
+	const doc_card = (document_type) =>
+		$$(".ob-doc").find((d) => d.dataset.documentType === document_type);
+
+	const sync_doc_card = (card) => {
+		if (!card) return;
+		const count = card.querySelectorAll(".ob-file").length;
+		card.classList.toggle("is-done", count > 0);
+
+		const drop = card.querySelector(".ob-drop");
+		if (!drop) return;
+		const multiple = card.dataset.allowMultiple === "1";
+		drop.classList.toggle("is-hidden", count > 0 && !multiple);
+
+		const main = drop.querySelector(".ob-drop-main");
+		if (main) main.textContent = count ? main.dataset.more : main.dataset.first;
+	};
+
+	const add_file_row = (card, file) => {
+		const holder = card.querySelector(".ob-files");
+		const row = document.createElement("div");
+		row.className = "ob-file";
+
+		const link = document.createElement("a");
+		link.href = file.file_url;
+		link.target = "_blank";
+		link.rel = "noopener";
+		link.textContent = file.file_name || file.file_url;
+
+		const remove = document.createElement("button");
+		remove.type = "button";
+		remove.className = "ob-remove";
+		remove.dataset.row = file.row_name;
+		remove.setAttribute("aria-label", __("Remove"));
+		remove.textContent = "×";
+
+		row.appendChild(link);
+		row.appendChild(remove);
+		holder.appendChild(row);
+	};
+
+	const apply_state = (state) => {
+		if (!state) return;
+		render_missing(state.missing);
+		if (!state.progress) return;
+		const fill = $("#ob-progress-fill");
+		const count = $("#ob-done");
+		if (fill) fill.style.width = `${state.progress.percent}%`;
+		if (count) count.textContent = state.progress.done;
+	};
 
 	// Uploads go through Frappe's own endpoint, always private.
 	const upload = (input, file) => {
@@ -707,16 +1129,34 @@ frappe.ready(() => {
 				return call("portal_attach", {
 					document_type: input.dataset.documentType,
 					file_url: r.message.file_url,
+					// What they called it. Frappe renames a colliding file on disk, so
+					// the stored name is not necessarily the one they chose -- and the
+					// duplicate check needs the one they chose.
+					file_name: file.name,
 				});
 			})
-			.then(() => window.location.reload())
+			.then((r) => {
+				// `r` is absent when frappe.call resolved on a server throw -- the card
+				// is then simply resynced from its own contents, which is correct.
+				const state = r && r.message;
+				const card = doc_card(input.dataset.documentType);
+				if (state && state.file && card) add_file_row(card, state.file);
+				sync_doc_card(card);
+				apply_state(state);
+			})
 			.catch(() => {
+				// A duplicate or a rejected file leaves the card exactly as it was; the
+				// server has already explained why in its own dialog.
 				if (main) main.textContent = previous;
-				frappe.msgprint({ message: __("Upload failed. Please try again."), indicator: "red" });
+			})
+			.finally(() => {
+				// Without this, choosing the same file twice in a row fires no change
+				// event the second time and the page looks frozen.
+				input.value = "";
 			});
 	};
 
-	form.querySelectorAll(".ob-upload").forEach((input) => {
+	$$(".ob-upload", form).forEach((input) => {
 		input.onchange = () => upload(input, input.files[0]);
 
 		const drop = input.closest(".ob-drop");
@@ -731,10 +1171,19 @@ frappe.ready(() => {
 		});
 	});
 
-	form.querySelectorAll(".ob-remove").forEach((btn) => {
-		btn.onclick = () =>
-			call("portal_remove_document", { row_name: btn.dataset.row })
-				.then(() => window.location.reload());
+	// Delegated, because file rows are added after load.
+	form.addEventListener("click", (e) => {
+		const btn = e.target.closest(".ob-remove");
+		if (!btn) return;
+		const card = btn.closest(".ob-doc");
+		btn.disabled = true;
+		call("portal_remove_document", { row_name: btn.dataset.row })
+			.then((r) => {
+				btn.closest(".ob-file").remove();
+				sync_doc_card(card);
+				apply_state(r.message);
+			})
+			.fail(() => { btn.disabled = false; });
 	});
 
 	/* ---- "same as current address" ---------------------------------------
@@ -760,23 +1209,7 @@ frappe.ready(() => {
 				const wrap = dst.closest(".ob-field");
 				if (wrap) wrap.classList.toggle("is-mirrored", on);
 			});
-			render_missing_locally();
-		};
-
-		// Keep the outstanding list honest without a round trip.
-		const render_missing_locally = () => {
-			const items = [];
-			form.querySelectorAll(".ob-field").forEach((f) => {
-				const req = f.querySelector(".ob-star");
-				if (!req) return;
-				const el = f.querySelector("[name]");
-				if (!el) return;
-				const filled = el.classList.contains("ob-date") ? el.dataset.iso : el.value;
-				if (!filled) items.push(f.querySelector(".ob-label").textContent.replace("*", "").trim());
-			});
-			document.querySelectorAll(".ob-doc:not(.is-done) .ob-star").forEach((s) =>
-				items.push(s.closest(".ob-doc").dataset.documentType));
-			render_missing(items);
+			refresh_state();
 		};
 
 		same.addEventListener("change", mirror);

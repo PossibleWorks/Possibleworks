@@ -83,7 +83,36 @@ frappe.ui.form.on("Onboarding Template Field", {
 	form_render: function (frm) {
 		apply_field_options(frm);
 	},
+
+	fieldname: function (frm, cdt, cdn) {
+		constrain_row(frm, locals[cdt][cdn]);
+	},
 });
+
+/**
+ * Clear the flags a chosen field cannot honour, at the moment it is chosen.
+ *
+ * The server enforces this too -- it has to, since the API bypasses the form -- but
+ * silently correcting a tick after save reads as the form fighting the user. Better to
+ * show the true state immediately.
+ */
+function constrain_row(frm, row) {
+	const options = frm._pw_field_options || [];
+	const chosen = options.find((o) => o.value === row.fieldname);
+	if (!chosen) return;
+
+	if (chosen.is_readonly) {
+		// Shown to the applicant, never writable by them. Personal Email is the address
+		// their login is tied to; letting them edit it detaches the record from the
+		// account and nothing re-syncs the two.
+		frappe.model.set_value(row.doctype, row.name, "is_editable", 0);
+		frappe.model.set_value(row.doctype, row.name, "is_required", 0);
+		frappe.model.set_value(row.doctype, row.name, "lock_when_filled", 0);
+	} else if (chosen.is_table) {
+		// "Lock Once Provided" compares a single stored value; a list of rows has none.
+		frappe.model.set_value(row.doctype, row.name, "lock_when_filled", 0);
+	}
+}
 
 function mark_disabled_rows(frm) {
 	const grid = frm.fields_dict.documents && frm.fields_dict.documents.grid;

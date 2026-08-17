@@ -34,7 +34,18 @@ const PHONE_FIELDS = ["cell_number", "emergency_phone_number"];
 
 frappe.ui.form.on("Onboarding Applicant", {
 	onload: function (frm) {
-		frm._pw_refresh_pending = frappe.utils.debounce(() => render_pending_fields(frm), 400);
+		frm._pw_refresh_pending = frappe.utils.debounce(() => {
+			// The panel is rebuilt from the SAVED child table, so anything typed into it
+			// since the last save would be wiped by the re-render. Carry it across.
+			if (frm.pw_pending_group) {
+				frm._pw_pending_carry = Object.assign(
+					{},
+					frm._pw_pending_carry,
+					frm.pw_pending_group.get_values(true) || {}
+				);
+			}
+			render_pending_fields(frm);
+		}, 400);
 	},
 
 	refresh: function (frm) {
@@ -61,6 +72,12 @@ frappe.ui.form.on("Onboarding Applicant", {
 
 	before_save: function (frm) {
 		sync_pending_fields_into_table(frm);
+	},
+
+	after_save: function (frm) {
+		// The child table is now the source of truth again. Holding the carry any longer
+		// would let a stale value keep overriding what was actually saved.
+		frm._pw_pending_carry = null;
 	},
 
 	same_as_current_address: function (frm) {
@@ -252,7 +269,21 @@ function draw_panel(frm, wrapper, data) {
 		fields: [{ fieldtype: "Section Break" }].concat(renderable),
 	});
 	frm.pw_pending_group.make();
-	frm.pw_pending_group.set_values(data.captured || {});
+	// Anything typed since the last save outranks the saved child table.
+	frm.pw_pending_group.set_values(
+		Object.assign({}, data.captured || {}, frm._pw_pending_carry || {})
+	);
+
+	// Attached AFTER set_values so seeding the panel cannot itself mark the form dirty.
+	//
+	// These controls write into `employee_preview`, not `frm.doc`, so Frappe never sees
+	// the form change and the toolbar keeps offering Submit instead of Save -- leaving
+	// HR to submit a record whose pending values were never persisted. Marking the form
+	// dirty is what makes `before_save` (and therefore sync_pending_fields_into_table)
+	// reachable at all.
+	renderable.forEach((df) => {
+		df.onchange = () => frm.dirty();
+	});
 
 	// Filling a native field can satisfy or introduce a pending field, so re-resolve
 	// when one changes.

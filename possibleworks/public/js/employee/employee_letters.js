@@ -167,16 +167,58 @@ possibleworks.employee_letters.styles = function () {
 // Open Frappe's native in-desk print view with this letter's format
 // preselected — the same preview/print experience used for Salary Slips.
 // The template name is also the Print Format name.
+//
+// `meta.default_print_format` alone does NOT do this, which is why the wrong letter
+// used to come up. The print page is a singleton: `frappe.pages["print"]` builds one
+// PrintView in `on_page_load` and every later visit reuses it (print.js:6), so its
+// format selector still holds whatever was chosen last time. `set_default_print_format`
+// then opens with an early return when that leftover value is a valid format for the
+// doctype (print.js:829-835) — so it only ever honoured `default_print_format` on the
+// very first print of a session, and silently ignored every one after.
+//
+// So set the selector itself and fire its change handler, which is exactly what
+// picking the format by hand does.
+// `frappe.route_options` is deliberately NOT used here. Router.set_route serialises
+// every route option into the URL as JSON (router.js:370-374), so passing `frm` meant
+// stuffing the whole Employee doc and its meta into the address bar — for a hint the
+// print page then ignored anyway.
 possibleworks.employee_letters.print_view = function (frm, letter) {
-	frappe.route_options = {
-		frm: {
-			doctype: "Employee",
-			docname: frm.doc.name,
-			doc: frm.doc,
-			meta: Object.assign({}, frm.meta, { default_print_format: letter }),
-		},
-	};
-	frappe.set_route("print", "Employee", frm.doc.name);
+	frappe.set_route("print", "Employee", frm.doc.name).then(() => {
+		possibleworks.employee_letters.select_print_format(letter);
+	});
+};
+
+/**
+ * Force the print view's format selector onto `letter`.
+ *
+ * Retried because the page renders asynchronously — `set_route` resolves once the route
+ * has changed, not once PrintView has finished drawing its sidebar — and because
+ * `set_default_print_format` runs during that draw and would otherwise overwrite us.
+ */
+possibleworks.employee_letters.select_print_format = function (letter, attempt = 0) {
+	// The user may have routed somewhere else while we were waiting.
+	if (frappe.get_route()[0] !== "print") return;
+
+	const wrapper = document.querySelector(
+		'.print-preview-sidebar [data-fieldname="print_format"]'
+	);
+	const control = wrapper && wrapper.fieldobj;
+
+	if (!control) {
+		// ~2s of retries. The sidebar is normally up within one or two frames; giving up
+		// quietly just leaves the user on the format they last used.
+		if (attempt < 20) {
+			setTimeout(() => possibleworks.employee_letters.select_print_format(letter, attempt + 1), 100);
+		}
+		return;
+	}
+
+	if (control.$input.val() === letter) return;
+
+	// `.trigger("change")` is what reaches df.change -> refresh_print_format(), which
+	// re-renders the preview. Setting the value alone would show the right name above a
+	// stale document.
+	control.$input.val(letter).trigger("change");
 };
 
 possibleworks.employee_letters.email = function (frm, letter) {

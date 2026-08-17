@@ -54,6 +54,7 @@ from possibleworks.onboarding.validators import (
 	verhoeff_check_digit,
 	verhoeff_checksum,
 )
+from possibleworks.tests.site_fixtures import sample_value_for
 
 VALID_PAN = "ABCPD1234E"
 VALID_IFSC = "HDFC0001234"
@@ -371,7 +372,9 @@ class TestOnboardingApplicant(IntegrationTestCase):
 		template = make_template(
 			rows=[{"document_type": "Aadhaar Card", "is_required": 1, "enabled": 0}]
 		)
-		doc = self.make_ready_applicant(document_template=template.name)
+		doc = self.satisfy_pending_fields(
+			self.make_ready_applicant(document_template=template.name)
+		)
 		# The only required row is disabled, so submission is not blocked on documents.
 		doc.submit()
 		self.assertEqual(doc.docstatus, 1)
@@ -597,13 +600,54 @@ class TestOnboardingApplicant(IntegrationTestCase):
 	# ------------------------------------------------------------------ #
 
 	def satisfy_documents(self, doc):
-		"""Upload whatever THIS record's template snapshot requires."""
+		"""Upload whatever THIS record's template snapshot requires, and capture whatever
+		this SITE requires on Employee. Together these are "everything except the thing
+		the calling test is actually about"."""
 		for row in doc.required_documents:
 			if row.enabled and row.is_required:
 				doc.append(
 					"documents",
 					{"document_type": row.document_type, "attachment": make_attachment()},
 				)
+		doc.save()
+		return self.satisfy_pending_fields(doc)
+
+	def satisfy_pending_fields(self, doc):
+		"""Capture whatever THIS SITE makes mandatory on Employee.
+
+		Without this a submit test asserts against the site's Employee configuration
+		rather than against our own code, and passes or fails on what somebody added to
+		Employee last week. `hw-hris` has two `reqd` probation-date Custom Fields; the
+		next site will have something else entirely -- which is the whole reason the
+		pending-fields resolver exists rather than a hardcoded list.
+
+		Deliberately the `blocking` bucket only. `native` fields (gender, date of birth)
+		have a counterpart on the onboarding form and must be filled THERE -- capturing
+		them here would paper over the very gap the missing-field tests assert on.
+
+		Values are minted from the docfield's own type, so this keeps working when the
+		set changes.
+		"""
+		outstanding = pending_fields.resolve(doc)["blocking"]
+		if not outstanding:
+			return doc
+
+		for df in outstanding:
+			value = sample_value_for(df)
+			if value is None:
+				# Table, Attach and friends cannot be filled generically. The resolver
+				# puts those in `manual` and the test that cares asserts on them directly.
+				continue
+			doc.append(
+				"pending_employee_fields",
+				{
+					"fieldname": df["fieldname"],
+					"label": df.get("label"),
+					"fieldtype": df.get("fieldtype"),
+					"options": df.get("options"),
+					"value": value,
+				},
+			)
 		doc.save()
 		return doc
 
@@ -656,6 +700,42 @@ class TestOnboardingApplicant(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError) as ctx:
 			doc.submit()
 		self.assertIn("Bank", str(ctx.exception))
+
+	def test_salary_mode_starts_empty(self):
+		"""Defaulting to Bank silently claimed a payment method nobody chose -- and
+		dragged the bank-detail requirements along with it."""
+		self.assertFalse(frappe.new_doc(DOCTYPE).salary_mode)
+
+	def test_required_applicant_field_blocks_submit_when_hr_never_filled_it(self):
+		"""The gap a template's Required flag could not close on its own.
+
+		`passport_number` here is Required but locked to the applicant, so HR was meant
+		to supply it. The applicant's own submit cannot catch that -- they were never
+		shown an editable control -- so the check has to live at HR's submit.
+		"""
+		template = make_template()
+		template.append(
+			"applicant_fields",
+			{"fieldname": "passport_number", "is_editable": 1, "lock_when_filled": 1, "is_required": 1},
+		)
+		template.save()
+
+		doc = self.satisfy_documents(
+			self.make_ready_applicant(document_template=template.name)
+		)
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			doc.submit()
+		self.assertIn("Passport Number", str(ctx.exception))
+
+		# A refused submit still leaves docstatus=1 on the in-memory doc; only the
+		# transaction rolled back. Re-read before carrying on, or the next save fails on
+		# a timestamp mismatch rather than on anything this test is about.
+		doc.reload()
+
+		doc.passport_number = "Z1234567"
+		doc.save()
+		doc.submit()
+		self.assertEqual(doc.docstatus, 1)
 
 	# ------------------------------------------------------------------ #
 	# Employee ID / HR Settings.emp_created_by
@@ -845,7 +925,10 @@ class TestOnboardingApplicant(IntegrationTestCase):
 		self.assertIn("gender", outstanding)
 
 	def test_pending_fields_ready_once_everything_supplied(self):
-		doc = self.make_ready_applicant()
+		"""Supplying the captured values is part of "everything" -- on a site with its
+		own mandatory Employee fields, filling only the onboarding form is not enough,
+		which is the entire reason the capture table exists."""
+		doc = self.satisfy_pending_fields(self.make_ready_applicant())
 		self.assertTrue(pending_fields.describe(doc)["ready"])
 
 	def test_defaults_are_not_reported_as_missing(self):

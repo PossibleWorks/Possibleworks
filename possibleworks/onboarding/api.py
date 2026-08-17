@@ -27,7 +27,10 @@ from frappe.utils import now_datetime
 from possibleworks.onboarding import pending_fields
 from possibleworks.onboarding.constants import (
 	APPLICANT_EDITABLE_STATUSES,
+	APPLICANT_READONLY_FIELDS,
+	APPLICANT_SHOWABLE_CHILD_TABLES,
 	APPLICANT_SUBMITTED,
+	APPLICANT_TEMPLATE_FIELDS,
 	APPLICANT_WRITABLE_FIELDS,
 	DOCTYPE,
 	DOCUMENT_TEMPLATE_DOCTYPE,
@@ -227,24 +230,37 @@ def list_document_types(name: str) -> list[dict]:
 def list_applicant_field_options() -> list[dict]:
 	"""Fields a template may offer to applicants.
 
-	Derived from live meta intersected with APPLICANT_WRITABLE_FIELDS, so the picker
+	Derived from live meta intersected with APPLICANT_TEMPLATE_FIELDS, so the picker
 	can never offer something the mass-assignment allowlist would later reject, and it
 	stays correct as the form changes.
+
+	Includes the two repeating tables (Education, Work Experience) and the display-only
+	fields, each labelled so HR can see what they are choosing.
 	"""
 	frappe.has_permission(DOCUMENT_TEMPLATE_DOCTYPE, "read", throw=True)
 
 	meta = frappe.get_meta(DOCTYPE)
 	options = []
-	for fieldname in sorted(APPLICANT_WRITABLE_FIELDS):
+	for fieldname in sorted(APPLICANT_TEMPLATE_FIELDS):
 		df = meta.get_field(fieldname)
 		if not df:
 			continue
+
+		if fieldname in APPLICANT_SHOWABLE_CHILD_TABLES:
+			kind = _("list of rows")
+		elif fieldname in APPLICANT_READONLY_FIELDS:
+			kind = _("display only")
+		else:
+			kind = df.fieldtype
+
 		options.append(
 			{
 				"value": fieldname,
 				"label": df.label,
-				"description": f"{df.label} ({df.fieldtype})",
+				"description": f"{df.label} ({kind})",
 				"fieldtype": df.fieldtype,
+				"is_table": fieldname in APPLICANT_SHOWABLE_CHILD_TABLES,
+				"is_readonly": fieldname in APPLICANT_READONLY_FIELDS,
 			}
 		)
 	return options
@@ -417,7 +433,14 @@ def attach_document(
 
 	doc.append(
 		"documents",
-		{"document_type": document_type, "attachment": file_url, "remarks": remarks},
+		{
+			"document_type": document_type,
+			"attachment": file_url,
+			# Best available here: this caller uploads on the applicant's behalf and
+			# never sees the original name. The portal, which does, sends its own.
+			"original_file_name": file_doc.file_name,
+			"remarks": remarks,
+		},
 	)
 	# validate_documents re-checks privacy, allow_multiple and the extension list.
 	doc.save()

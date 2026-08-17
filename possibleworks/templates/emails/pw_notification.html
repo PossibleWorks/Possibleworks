@@ -1,0 +1,98 @@
+{#
+	Possibleworks branded email shell.
+
+	Two things this comment must never contain, both learned the hard way:
+
+	An angle-bracketed tag name. Editors do not treat Jinja comment delimiters as
+	comments, so a literal style tag here opens an embedded CSS region that runs to the
+	end of the file and buries it in phantom errors.
+
+	A closing comment delimiter, even inside backticks. Jinja ends the comment at the
+	first one it sees, and everything after it renders into the email.
+
+	Starts at a div, never an html or body tag: Frappe drops whatever you hand
+	`frappe.sendmail` into a paragraph (see templates/emails/standard.html), and a
+	block-level document tag nested inside a paragraph is invalid -- every mail client
+	recovers from it differently.
+
+	Every rule is inline. Gmail strips embedded stylesheets outright, and Frappe's own
+	CSS inliner only knows about its own classes, not ours.
+
+	All human-readable text goes through `| e`. Frappe's Jinja environment runs with
+	autoescape off, and some of these values (an applicant's own name) are user-supplied.
+	URLs are emitted raw and are trusted by contract -- callers build them, never users --
+	because escaping an ampersand inside a signed link is a good way to break a signature.
+#}
+<div style="font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0;">
+	<div style="max-width: 600px; background-color: #ffffff; margin: 0 auto; border-radius: 10px;">
+
+		<div style="padding: 32px 24px; background-color: #eaf1fe; border-radius: 12px;">
+			{% if logo_url %}
+			<div style="margin-bottom: 24px;">
+				<img src="{{ logo_url }}" alt="PossibleWorks" height="40"
+					style="height: 40px; border: 0; display: block; outline: none; text-decoration: none;" />
+			</div>
+			{% endif %}
+
+			<div style="color: #0f1e3d;">
+				<h2 style="font-size: 20px; font-weight: 500; color: #0f1e3d; margin: 0 0 16px 0;">
+					{{ heading | e }}
+				</h2>
+
+				{% for paragraph in paragraphs %}
+				<p style="color: #3d475c; font-size: 14px; font-weight: 400; line-height: 22px; margin: 0 0 12px 0;">
+					{{ paragraph | e }}
+				</p>
+				{% endfor %}
+
+				{% if cta and cta.url %}
+				<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 24px 0;">
+					<tr>
+						<td style="background-color: #2e5cb8; border-radius: 6px;" align="center">
+							<a href="{{ cta.url }}"
+								style="display: inline-block; padding: 12px 24px; font-family: Arial, Helvetica, sans-serif;
+								       font-size: 14px; font-weight: 500; line-height: 18px;
+								       color: #ffffff !important; text-decoration: none !important;">
+								{{ cta.label | e }}
+							</a>
+						</td>
+					</tr>
+				</table>
+
+				{% if cta.fallback %}
+				<p style="color: #3d475c; font-size: 12px; font-weight: 400; margin: 0 0 4px 0;">
+					{{ cta.fallback | e }}
+				</p>
+				<p style="font-size: 12px; margin: 0 0 12px 0; word-break: break-all;">
+					<a href="{{ cta.url }}" style="color: #2e5cb8; text-decoration: underline;">{{ cta.url }}</a>
+				</p>
+				{% endif %}
+				{% endif %}
+
+				{% for note in notes %}
+				<p style="color: #3d475c; font-size: 13px; font-weight: 400; line-height: 20px; margin: 0 0 8px 0;">
+					{{ note | e }}
+				</p>
+				{% endfor %}
+
+				{% if signoff %}
+				<p style="color: #3d475c; font-size: 14px; font-weight: 400; line-height: 22px; margin: 24px 0 0 0;">
+					{% for line in signoff %}{{ line | e }}{% if not loop.last %}<br />{% endif %}{% endfor %}
+				</p>
+				{% endif %}
+			</div>
+		</div>
+
+		<div style="text-align: center; padding: 32px 20px; background-color: #ffffff;
+		            font-size: 12px; color: #2e5cb8; font-weight: 400;">
+			<p style="margin: 0; line-height: 18px;">
+				{{ footer_note | e }}
+				{% if privacy_url %}
+				<a href="{{ privacy_url }}"
+					style="color: #2e5cb8 !important; text-decoration: underline !important;">{{ privacy_label | e }}</a>
+				{% endif %}
+			</p>
+		</div>
+
+	</div>
+</div>
