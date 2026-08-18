@@ -10,3 +10,4 @@ possibleworks.patches.v1_3.migrate_document_types_to_template
 possibleworks.patches.v1_4.create_onboarding_portal_role
 possibleworks.patches.v1_5.create_standard_employee_role_profile
 possibleworks.patches.v1_5.index_employee_onboarding_employee
+possibleworks.patches.v1_5.restyle_employee_letters
