@@ -68,6 +68,38 @@ class TestOnboardingPortal(IntegrationTestCase):
 	def tearDown(self):
 		frappe.set_user("Administrator")
 
+	def ensure_company_holiday_list(self):
+		"""Submitting now checks that a Holiday List resolves for the company.
+
+		HRMS reads those only from submitted Holiday List Assignment records, so an
+		unassigned company blocks the submit. Rolled back with the test.
+		"""
+		from hrms.utils.holiday_list import get_assigned_holiday_list
+
+		if get_assigned_holiday_list(self.company, today()):
+			return
+
+		holiday_list = frappe.db.get_value(
+			"Holiday List",
+			{"from_date": ("<=", today()), "to_date": (">=", today())},
+			["name", "from_date"],
+			as_dict=True,
+		)
+		if not holiday_list:
+			self.skipTest("no Holiday List on this site covers today")
+
+		assignment = frappe.get_doc(
+			{
+				"doctype": "Holiday List Assignment",
+				"applicable_for": "Company",
+				"assigned_to": self.company,
+				"holiday_list": holiday_list.name,
+				"from_date": holiday_list.from_date,
+			}
+		)
+		assignment.insert(ignore_permissions=True)
+		assignment.submit()
+
 	# ------------------------------------------------------------------ #
 	# Factories
 	# ------------------------------------------------------------------ #
@@ -208,6 +240,11 @@ class TestOnboardingPortal(IntegrationTestCase):
 		doc.reports_to = frappe.db.get_value(
 			"Employee", {"status": "Active", "user_id": ("is", "set")}, "name"
 		)
+		# Submit-time gates: the work email becomes the login, and the Job Offer built
+		# during submit will not save without a designation.
+		doc.company_email = f"work{frappe.generate_hash(length=6)}@example.com"
+		doc.designation = frappe.db.get_value("Designation", {}, "name")
+		self.ensure_company_holiday_list()
 		doc.status = READY_TO_ONBOARD
 		doc.save()
 		capture_site_mandatory_fields(doc)

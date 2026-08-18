@@ -52,6 +52,7 @@ frappe.ui.form.on("Onboarding Applicant", {
 		toggle_employee_number(frm);
 		render_pending_fields(frm);
 		add_relink_button(frm);
+		add_retry_setup_button(frm);
 		add_resync_button(frm);
 		add_invite_button(frm);
 		render_document_checklist(frm);
@@ -351,6 +352,53 @@ function add_relink_button(frm) {
 			},
 		});
 	}).addClass("btn-warning");
+}
+
+/**
+ * Finish the steps that run after the Employee is committed.
+ *
+ * `complete_post_employee_setup` swallows its failures on purpose -- the Employee is
+ * already committed by then, so throwing would roll this record back to draft behind a
+ * live Employee. That trade is only honest if there is a way to finish the job
+ * afterwards, and this is it. Both steps are idempotent, so pressing it when nothing is
+ * missing simply reports what is already there.
+ */
+function add_retry_setup_button(frm) {
+	if (frm.doc.docstatus !== 1 || !frm.doc.employee) return;
+
+	frm.add_custom_button(__("Retry Onboarding Setup"), function () {
+		frappe.call({
+			method: `${METHOD_PATH}.retry_onboarding_setup`,
+			args: { name: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Finishing onboarding setup..."),
+			callback: function (r) {
+				if (!r.message) return;
+
+				const done = [];
+				const missing = [];
+				(r.message.role_profile_assigned ? done : missing).push(__("role profile"));
+				(r.message.employee_onboarding ? done : missing).push(__("onboarding checklist"));
+
+				if (missing.length) {
+					frappe.msgprint({
+						title: __("Still Incomplete"),
+						indicator: "orange",
+						message: __("Could not set up: {0}. Check the Error Log for why.", [
+							missing.join(", "),
+						]),
+					});
+					return;
+				}
+
+				frappe.show_alert({
+					message: __("Onboarding setup complete: {0}", [done.join(", ")]),
+					indicator: "green",
+				});
+				frm.reload_doc();
+			},
+		});
+	});
 }
 
 /**

@@ -279,3 +279,91 @@ DEFAULT_DOCUMENT_TYPES = (
 		"allowed_extensions": "",
 	},
 )
+
+
+# --------------------------------------------------------------------------- #
+# Downstream records created at submit
+# --------------------------------------------------------------------------- #
+# Submitting an applicant provisions a login, an Employee, and the stock HRMS
+# recruitment/boarding chain. Job Applicant and Job Offer are NOT created because
+# anybody recruited through them -- they exist because `Employee Onboarding` has
+# `job_applicant` and `job_offer` as reqd links, so the checklist cannot exist
+# without them.
+
+JOB_APPLICANT_DOCTYPE = "Job Applicant"
+JOB_OFFER_DOCTYPE = "Job Offer"
+BOARDING_DOCTYPE = "Employee Onboarding"
+BOARDING_TEMPLATE_DOCTYPE = "Employee Onboarding Template"
+
+# Both doctypes carry a `status` Select; these are the options we set.
+JOB_APPLICANT_ACCEPTED = "Accepted"
+JOB_OFFER_ACCEPTED = "Accepted"
+
+# --------------------------------------------------------------------------- #
+# Role profile
+# --------------------------------------------------------------------------- #
+# `Employee` MUST stay in this list. `User.populate_role_profile_roles`
+# (frappe/core/doctype/user/user.py:259) PRUNES any role not granted by an assigned
+# profile on every save -- so the role `Employee.update_user()` appends would be
+# stripped again on the next User save if it were absent here.
+#
+# The profile is assigned AFTER the Employee exists, so the User is created with no
+# roles at all: a failure between the two leaves a powerless account rather than a
+# System Manager.
+
+STANDARD_ROLE_PROFILE = "Standard Employee Role Profile"
+STANDARD_ROLE_PROFILE_ROLES = (
+	"Employee",
+	"HR User",
+	"Leave Approver",
+	"System Manager",
+)
+
+# --------------------------------------------------------------------------- #
+# Default Employee Onboarding template
+# --------------------------------------------------------------------------- #
+# Matched by `title`, NOT by name: `Employee Onboarding Template.autoname` is
+# `HR-EMP-ONT-.#####`, so the title is neither the record name nor unique.
+#
+# No `user` and no `role` on any row, deliberately. `create_task_and_notify_user`
+# then creates the Task and assigns nobody, which is what an admin wants before they
+# have decided who owns what for this particular hire.
+#
+# Every row sets `begin_on`. A blank `begin_on` makes `get_task_dates` return
+# [None, None] -- the Task is still created and still assigned, but with no expected
+# start or end, so it never appears in any date-driven view. 0 means "day one".
+
+DEFAULT_BOARDING_TEMPLATE_TITLE = "Default Employee Onboarding"
+
+DEFAULT_BOARDING_ACTIVITIES = (
+	{
+		"activity_name": "Collect and verify joining documents",
+		"description": "Check the originals against the copies uploaded during onboarding.",
+		"begin_on": 0,
+		"duration": 2,
+	},
+	{
+		"activity_name": "Issue IT assets and system access",
+		"description": "Laptop, accounts, and access to the tools the role needs.",
+		"begin_on": 0,
+		"duration": 3,
+	},
+	{
+		"activity_name": "Complete payroll and statutory enrolment",
+		"description": "Salary structure, bank details, and statutory registrations.",
+		"begin_on": 1,
+		"duration": 4,
+	},
+	{
+		"activity_name": "Company and policy induction",
+		"description": "Introduce the handbook, leave policy, and code of conduct.",
+		"begin_on": 2,
+		"duration": 1,
+	},
+	{
+		"activity_name": "Introduce reporting manager and first-week plan",
+		"description": "Agree the first week's objectives with the reporting manager.",
+		"begin_on": 2,
+		"duration": 3,
+	},
+)

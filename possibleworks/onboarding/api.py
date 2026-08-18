@@ -32,11 +32,14 @@ from possibleworks.onboarding.constants import (
 	APPLICANT_SUBMITTED,
 	APPLICANT_TEMPLATE_FIELDS,
 	APPLICANT_WRITABLE_FIELDS,
+	BOARDING_DOCTYPE,
 	DOCTYPE,
 	DOCUMENT_TEMPLATE_DOCTYPE,
 	DOCUMENT_TYPE_DOCTYPE,
 	HR_REVERSAL_ROLES,
+	HR_ROLES,
 	ONBOARDED,
+	STANDARD_ROLE_PROFILE,
 )
 from possibleworks.onboarding.employee_fields import EMPLOYEE_DOCTYPE
 
@@ -498,3 +501,44 @@ def relink_employee(name: str) -> dict:
 	doc.db_set({"employee": existing, "status": ONBOARDED}, update_modified=False)
 
 	return {"name": doc.name, "employee": existing, "relinked": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def retry_onboarding_setup(name: str) -> dict:
+	"""Re-run the steps that happen after the Employee is committed.
+
+	Those steps -- the role profile and the onboarding checklist -- are deliberately
+	non-fatal in `on_submit`, because the Employee is already committed by then and
+	failing would leave the record contradicting reality. This is how they get
+	finished afterwards. Both are idempotent, so calling it when nothing is missing is
+	a no-op.
+	"""
+	frappe.only_for(HR_ROLES, message=True)
+
+	doc = frappe.get_doc(DOCTYPE, name)
+	doc.check_permission("write")
+
+	employee = doc.employee or doc.get_employee_from_chain()
+	if not employee:
+		frappe.throw(
+			_("No Employee has been created from this record yet, so there is nothing to set up."),
+			title=_("Nothing to Retry"),
+		)
+
+	doc.complete_post_employee_setup(employee)
+
+	user = frappe.db.get_value("Employee", employee, "user_id")
+	return {
+		"name": doc.name,
+		"employee": employee,
+		"user": user,
+		"role_profile_assigned": bool(
+			user
+			and frappe.db.exists(
+				"User Role Profile", {"parent": user, "role_profile": STANDARD_ROLE_PROFILE}
+			)
+		),
+		"employee_onboarding": frappe.db.get_value(
+			BOARDING_DOCTYPE, {"employee": employee, "docstatus": ("!=", 2)}, "name"
+		),
+	}
