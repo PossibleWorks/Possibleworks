@@ -19,6 +19,10 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, getdate, today
 from frappe.utils.file_manager import save_file
 
+from possibleworks.observer.constants import (
+	DEFER_IMMEDIATE_SEND_FLAG,
+	IMMEDIATE_SEND_DOCTYPES,
+)
 from possibleworks.observer.observer import WorkflowEventObserver
 from possibleworks.onboarding import boarding, pending_fields, provisioning
 from possibleworks.onboarding.api import (
@@ -1229,14 +1233,134 @@ class TestOnboardingApplicant(IntegrationTestCase):
 	# Decisions encoded as executable guards
 	# ------------------------------------------------------------------ #
 
-	def test_observer_skips_onboarding_applicant(self):
-		"""Decision: pull-only. If someone later adds this doctype to
-		ALWAYS_OBSERVED_DOCTYPES, this fails and forces the conversation."""
+	def test_hiring_chain_is_observed_immediately(self):
+		"""Reverses the earlier pull-only decision: the external app is now notified as
+		each step happens. It is notified, not fed -- see the payload test below."""
 		self._observer.stop()
 		try:
-			self.assertFalse(WorkflowEventObserver.should_process(DOCTYPE))
+			for doctype in (DOCTYPE, "Job Applicant", "Job Offer", BOARDING_DOCTYPE):
+				self.assertTrue(
+					WorkflowEventObserver.should_process(doctype), f"{doctype} must be observed"
+				)
+				self.assertIn(doctype, IMMEDIATE_SEND_DOCTYPES)
 		finally:
 			self._observer.start()
+
+	def test_onboarding_submit_defers_the_immediate_commit(self):
+		"""The commit in the immediate branch would strand the Job Applicant and Job
+		Offer behind an applicant that rolled back, so it must be suppressed while
+		on_submit is still building them."""
+		seen = []
+		# A plain function on the class: `process_event` is a staticmethod, so there is
+		# no bound-method wrapper to unwrap.
+		real = WorkflowEventObserver.process_event
+
+		def spy(doc, event_type):
+			if doc.doctype in ("Job Applicant", "Job Offer"):
+				seen.append(bool(frappe.flags.get(DEFER_IMMEDIATE_SEND_FLAG)))
+			return real(doc, event_type)
+
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch.object(WorkflowEventObserver, "process_event", staticmethod(spy)):
+			doc.submit()
+
+		self.assertTrue(seen, "no Job Applicant/Job Offer events were observed at all")
+		self.assertTrue(all(seen), "the defer flag was not set while the chain was built")
+
+	def test_defer_flag_is_cleared_even_when_submit_fails(self):
+		"""A flag left set would silently disable immediate delivery for the rest of
+		the request."""
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"possibleworks.onboarding.provisioning.create_employee_user",
+			side_effect=RuntimeError("boom"),
+		):
+			with self.assertRaises(RuntimeError):
+				doc.submit()
+
+		self.assertFalse(frappe.flags.get(DEFER_IMMEDIATE_SEND_FLAG))
+
+	def ensure_tenant_id(self, company):
+		"""Both payload builders return None without a tenant, and only one company on
+		this site happens to carry one. Supplied so the assertions actually run; rolled
+		back with the test."""
+		if not frappe.db.get_value("Company", company, "custom_tenant_id"):
+			frappe.db.set_value(
+				"Company", company, "custom_tenant_id", frappe.generate_hash(length=12)
+			)
+
+	def test_hiring_chain_payload_is_a_pointer_and_leaks_no_pii(self):
+		"""Decision: notify, do not feed. The applicant record holds Aadhaar, PAN,
+		passport and bank details; every payload is stored verbatim in Observer Event
+		Log with retention off by default, so the full document must never go out.
+		The receiver fetches through the scoped API instead."""
+		from possibleworks.observer.payload_builder import PayloadBuilder
+
+		aadhaar = valid_aadhaar("29876543210")
+		doc = self.submitted_applicant(
+			aadhar_number=aadhaar, bank_ac_no="9876543210", pan_number=VALID_PAN
+		)
+		job_applicant = frappe.db.get_value("Employee", doc.employee, "job_applicant")
+		self.ensure_tenant_id(doc.company)
+
+		records = {
+			DOCTYPE: doc.name,
+			"Job Applicant": job_applicant,
+			"Job Offer": frappe.db.get_value(
+				"Job Offer", {"job_applicant": job_applicant, "docstatus": 1}, "name"
+			),
+			BOARDING_DOCTYPE: frappe.db.get_value(
+				BOARDING_DOCTYPE, {"employee": doc.employee}, "name"
+			),
+		}
+
+		for doctype, name in records.items():
+			self.assertTrue(name, f"no {doctype} was created")
+			target = frappe.get_doc(doctype, name)
+			payload = PayloadBuilder.build_simple_payload(None, target, "on_submit")
+			self.assertIsNotNone(payload, f"{doctype} payload could not be built")
+
+			self.assertEqual(payload["document"]["doctype"], doctype)
+			self.assertEqual(payload["document"]["name"], name)
+			self.assertLessEqual(
+				len(payload["document"]), 5, f"{doctype} sent more than a pointer"
+			)
+
+			blob = frappe.as_json(payload)
+			for secret in (aadhaar, "9876543210", VALID_PAN):
+				self.assertNotIn(secret, blob, f"{doctype} payload leaked {secret}")
+
+	def test_pointer_carries_nothing_the_receiver_could_fetch(self):
+		"""The pointer is deliberately not a summary. `boarding_status` and every other
+		field are one API call away given doctype + name, so putting them in the event
+		only duplicates state that can go stale between queueing and delivery."""
+		from possibleworks.observer.payload_builder import PayloadBuilder
+
+		doc = self.submitted_applicant()
+		self.ensure_tenant_id(doc.company)
+		onboarding = frappe.get_doc(
+			BOARDING_DOCTYPE, frappe.db.get_value(BOARDING_DOCTYPE, {"employee": doc.employee}, "name")
+		)
+
+		payload = PayloadBuilder.build_simple_payload(None, onboarding, "after_insert")
+		document = payload["document"]
+
+		self.assertEqual(document["doctype"], BOARDING_DOCTYPE)
+		self.assertEqual(document["name"], onboarding.name)
+		# Employee Onboarding keeps its state in `boarding_status`, and that is left for
+		# the receiver to fetch rather than mirrored here.
+		self.assertNotIn("boarding_status", document)
+		self.assertNotIn(onboarding.boarding_status, [document.get("status")])
+
+	def test_job_applicant_can_resolve_a_company_for_its_payload(self):
+		"""Job Applicant ships with no company/department/employee, so without the
+		custom field every one of its events is dropped as unresolvable."""
+		from possibleworks.observer.payload_builder import PayloadBuilder
+
+		doc = self.submitted_applicant()
+		ja = frappe.get_doc("Job Applicant", frappe.db.get_value("Employee", doc.employee, "job_applicant"))
+
+		self.assertEqual(PayloadBuilder._resolve_company(ja), doc.company)
 
 	# ------------------------------------------------------------------ #
 	# Submit-time gates for the records created downstream

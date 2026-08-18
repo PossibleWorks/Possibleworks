@@ -103,6 +103,11 @@ def create_job_applicant(applicant) -> str:
 	doc.email_id = applicant.personal_email
 	doc.status = JOB_APPLICANT_ACCEPTED
 	doc.designation = applicant.designation
+	# Custom field from the v1_5 patch. Job Applicant ships with nothing the Observer
+	# can resolve a company from, and it is in IMMEDIATE_SEND_DOCTYPES, so leaving this
+	# blank means every event for the record is silently dropped as unresolvable.
+	if frappe.get_meta(JOB_APPLICANT_DOCTYPE).has_field("company"):
+		doc.company = applicant.company
 	doc.flags.ignore_permissions = True
 	doc.insert(ignore_permissions=True)
 

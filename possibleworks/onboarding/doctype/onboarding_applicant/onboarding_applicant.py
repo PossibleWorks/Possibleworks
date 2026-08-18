@@ -34,6 +34,7 @@ from frappe.model import no_value_fields, table_fields
 from frappe.model.document import Document
 from frappe.utils import cint, flt, formatdate, get_link_to_form, getdate, today
 
+from possibleworks.observer.constants import DEFER_IMMEDIATE_SEND_FLAG
 from possibleworks.onboarding import boarding, pending_fields, provisioning, validators
 from possibleworks.onboarding.constants import (
 	APPLICANT_EDITABLE_STATUSES,
@@ -140,9 +141,21 @@ class OnboardingApplicant(Document):
 		# Ordered so that whatever can fail on a business rule fails while a rollback
 		# still means something. The Job Offer's duplicate guard, the work-email
 		# collision and the User's own validation all live in here.
-		job_applicant = boarding.create_job_applicant(self)
-		boarding.create_job_offer(self, job_applicant)
-		user = provisioning.create_employee_user(self)
+		#
+		# Job Applicant, Job Offer and Employee Onboarding are all in
+		# IMMEDIATE_SEND_DOCTYPES, and that branch commits. Committing here would defeat
+		# the ordering above: a failure at the User or Employee step would leave a
+		# stranded Job Applicant and a submitted Job Offer behind an applicant that
+		# rolled back to draft, and since a fresh Job Applicant is minted on every
+		# attempt, each retry would add another orphan pair. The flag routes those events
+		# through the batch path instead, which queues without committing.
+		frappe.flags[DEFER_IMMEDIATE_SEND_FLAG] = True
+		try:
+			job_applicant = boarding.create_job_applicant(self)
+			boarding.create_job_offer(self, job_applicant)
+			user = provisioning.create_employee_user(self)
+		finally:
+			frappe.flags[DEFER_IMMEDIATE_SEND_FLAG] = False
 
 		employee = self.build_employee_record()
 		# Both set before insert. `user_id` is what makes `Employee.on_update` append

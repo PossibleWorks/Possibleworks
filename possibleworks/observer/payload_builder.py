@@ -119,6 +119,23 @@ class PayloadBuilder:
             if company:
                 return company
 
+        # 5. Job Applicant carries no company, department or employee field of its own,
+        #    so without this every one of its events would be dropped as unresolvable.
+        #    `company` is a custom field added by the possibleworks v1_5 patch and set
+        #    when the onboarding flow mints the applicant; `job_title` covers records
+        #    created by the recruitment desk against a Job Opening.
+        if doc.doctype == "Job Applicant":
+            if getattr(doc, "job_title", None):
+                company = frappe.db.get_value("Job Opening", doc.job_title, "company")
+                if company:
+                    return company
+            # A submitted Job Offer for this applicant is the next best source.
+            company = frappe.db.get_value(
+                "Job Offer", {"job_applicant": doc.name, "docstatus": 1}, "company"
+            )
+            if company:
+                return company
+
         return None
 
     @staticmethod
