@@ -239,13 +239,20 @@ class PayloadBuilder:
         """
         Build a minimal event payload for IMMEDIATE_SEND_DOCTYPES.
 
-        Returns only the fields the backend API needs:
+        A pointer, not a summary: it says what changed and leaves the receiver to fetch
+        the record. Deliberate -- documents like Onboarding Applicant hold Aadhaar, PAN
+        and bank details, and every payload is stored verbatim in Observer Event Log.
+
         {
             "tenant_id": "...",
             "user": "john.doe@company.com",
+            "event_type": "on_submit",
             "document": {
                 "doctype": "Purchase Order",
-                "name": "PUR-ORD-2026-00042"
+                "name": "PUR-ORD-2026-00042",
+                "status": "To Receive and Bill",
+                "docstatus": 1,
+                "employee": null
             }
         }
 
@@ -283,6 +290,14 @@ class PayloadBuilder:
                     "doctype": doc.doctype,
                     "name": doc.name,
                     "status": getattr(doc, "status", None),
+                    # Alongside `status`, not instead of it -- existing consumers read
+                    # `status` and this payload is shared with every procurement
+                    # doctype. It is worth having both because `status` means something
+                    # different on each: on a Purchase Order it mirrors the document
+                    # state, on an Onboarding Applicant it is a separate workflow that
+                    # reads "Ready to Onboard" while the record is still a draft.
+                    # docstatus is 0 Draft / 1 Submitted / 2 Cancelled everywhere.
+                    "docstatus": doc.docstatus,
                     "employee": getattr(doc, "employee", None),
                     **extra_fields
                 },

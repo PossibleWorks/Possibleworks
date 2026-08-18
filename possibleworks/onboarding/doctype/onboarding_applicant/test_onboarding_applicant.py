@@ -1330,7 +1330,7 @@ class TestOnboardingApplicant(IntegrationTestCase):
 			for secret in (aadhaar, "9876543210", VALID_PAN):
 				self.assertNotIn(secret, blob, f"{doctype} payload leaked {secret}")
 
-	def test_pointer_carries_nothing_the_receiver_could_fetch(self):
+	def test_pointer_carries_docstatus_alongside_status(self):
 		"""The pointer is deliberately not a summary. `boarding_status` and every other
 		field are one API call away given doctype + name, so putting them in the event
 		only duplicates state that can go stale between queueing and delivery."""
@@ -1347,10 +1347,15 @@ class TestOnboardingApplicant(IntegrationTestCase):
 
 		self.assertEqual(document["doctype"], BOARDING_DOCTYPE)
 		self.assertEqual(document["name"], onboarding.name)
-		# Employee Onboarding keeps its state in `boarding_status`, and that is left for
-		# the receiver to fetch rather than mirrored here.
+		# `docstatus` was added alongside `status` rather than replacing it: existing
+		# consumers read `status`, and this payload is shared with every procurement
+		# doctype. Both are here because they answer different questions.
+		self.assertEqual(document["docstatus"], onboarding.docstatus)
+		self.assertIn("status", document)
+		# Employee Onboarding has no `status` field at all, which is exactly why
+		# docstatus is needed -- and `boarding_status` stays a fetch away.
+		self.assertIsNone(document["status"])
 		self.assertNotIn("boarding_status", document)
-		self.assertNotIn(onboarding.boarding_status, [document.get("status")])
 
 	def test_job_applicant_can_resolve_a_company_for_its_payload(self):
 		"""Job Applicant ships with no company/department/employee, so without the
