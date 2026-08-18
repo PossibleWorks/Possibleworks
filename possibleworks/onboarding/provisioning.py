@@ -161,3 +161,18 @@ def ensure_standard_role_profile() -> str:
 		profile.save(ignore_permissions=True)
 
 	return profile.name
+
+
+def role_profile_missing(employee: str) -> bool:
+	"""True when the Employee's login has not been given the standard profile.
+
+	Used to decide whether the Retry button is worth showing at all -- a recovery
+	action that is always on screen stops reading as a recovery action.
+	"""
+	user_name = frappe.db.get_value("Employee", employee, "user_id")
+	if not user_name:
+		return True
+
+	return not frappe.db.exists(
+		"User Role Profile", {"parent": user_name, "role_profile": STANDARD_ROLE_PROFILE}
+	)

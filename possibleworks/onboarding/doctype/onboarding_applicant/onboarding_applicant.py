@@ -72,6 +72,27 @@ class OnboardingApplicant(Document):
 	# Lifecycle
 	# ------------------------------------------------------------------ #
 
+	def onload(self):
+		"""Tell the form whether the post-commit setup actually finished.
+
+		The Retry button is a recovery action, and one that is permanently on screen
+		stops looking like one -- HR reasonably asks what it is and whether they were
+		supposed to press it. So the form is told what, if anything, is missing, and
+		shows the button only then.
+
+		Two cheap `exists` lookups, and only for a submitted record.
+		"""
+		if self.docstatus != 1 or not self.employee:
+			return
+
+		missing = []
+		if provisioning.role_profile_missing(self.employee):
+			missing.append(_("role profile"))
+		if boarding.employee_onboarding_missing(self.employee):
+			missing.append(_("onboarding checklist"))
+
+		self.set_onload("pending_setup", missing)
+
 	def validate(self):
 		self.reset_state_on_amend()
 		self.set_applicant_name()

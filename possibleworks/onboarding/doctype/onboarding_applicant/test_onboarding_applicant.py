@@ -1540,3 +1540,47 @@ class TestOnboardingApplicant(IntegrationTestCase):
 		doc = self.make_applicant()
 		with self.assertRaises(frappe.ValidationError):
 			retry_onboarding_setup(doc.name)
+
+	# ------------------------------------------------------------------ #
+	# The Retry button only appears when it has something to do
+	# ------------------------------------------------------------------ #
+
+	def onload_pending_setup(self, doc):
+		doc.run_method("onload")
+		return (doc.get("__onload") or {}).get("pending_setup")
+
+	def test_no_retry_button_on_a_healthy_record(self):
+		"""A recovery action that is permanently on screen stops reading as one."""
+		doc = self.submitted_applicant()
+		self.assertEqual(self.onload_pending_setup(doc), [])
+
+	def test_retry_button_names_what_is_missing(self):
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"possibleworks.onboarding.boarding.ensure_employee_onboarding",
+			side_effect=RuntimeError("boom"),
+		):
+			doc.submit()
+		doc.reload()
+
+		self.assertEqual(self.onload_pending_setup(doc), ["onboarding checklist"])
+
+	def test_no_retry_button_before_submit(self):
+		"""Nothing has been provisioned yet, so there is nothing to retry."""
+		doc = self.make_applicant()
+		self.assertIsNone(self.onload_pending_setup(doc))
+
+	def test_retry_button_disappears_once_the_gap_is_closed(self):
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"possibleworks.onboarding.boarding.ensure_employee_onboarding",
+			side_effect=RuntimeError("boom"),
+		):
+			doc.submit()
+		doc.reload()
+		self.assertTrue(self.onload_pending_setup(doc))
+
+		retry_onboarding_setup(doc.name)
+
+		doc.reload()
+		self.assertEqual(self.onload_pending_setup(doc), [])

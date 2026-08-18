@@ -236,3 +236,10 @@ def _copy_template_activities(template: str, doc) -> None:
 
 	for row in rows:
 		doc.append("activities", row)
+
+
+def employee_onboarding_missing(employee: str) -> bool:
+	"""True when this Employee has no live onboarding checklist."""
+	return not frappe.db.exists(
+		BOARDING_DOCTYPE, {"employee": employee, "docstatus": ("!=", 2)}
+	)
