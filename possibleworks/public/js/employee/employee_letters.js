@@ -163,9 +163,12 @@ possibleworks.employee_letters.styles = function () {
 	return `
 		.pw-letters { margin: 4px 0; }
 		.pw-letters-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+		/* auto-fit, not auto-fill: auto-fill keeps the leftover tracks alive, so two
+		   letters sat in a row of four and the rest of the width went to waste.
+		   auto-fit collapses the empty tracks and the cards share the full row. */
 		.pw-letters-grid {
 			display: grid;
-			grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+			grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 			gap: 12px;
 		}
 		.pw-letter-card {

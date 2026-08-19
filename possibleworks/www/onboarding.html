@@ -292,25 +292,49 @@
 </div>
 
 <style>
-/* Calm, editorial, unhurried. Someone is handing over their Aadhaar and bank details
-   to a new employer -- the page should feel considered and trustworthy, not like a
-   form. Warm paper, a serif voice, and one clear answer to "what's left?". */
-.ob {
-	--paper: #fbfaf7;
-	--card: #ffffff;
-	--ink: #17150f;
-	--ink-soft: #6b6459;
-	--rule: #e8e3d9;
-	--accent: #1f5f4f;      /* deep green: progress, completion */
-	--accent-soft: #eef4f1;
-	--warn: #8a5a12;
-	--warn-soft: #fdf6e7;
-	--star: #b4342a;
-	--radius: 14px;
-	--serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+@import url("https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap");
 
-	background: var(--paper);
-	color: var(--ink);
+/* Calm, institutional, unhurried. Someone is handing over their Aadhaar and bank details
+   to a new employer -- the page should feel considered and trustworthy, not like a form.
+   Nunito throughout, the blue ramp for anything that means progress or action, and one
+   clear answer to "what's left?".
+
+   Tokens follow the Possibleworks design system, and live on :root rather than on .ob so
+   the Frappe dialogs at the bottom of this sheet can read them too -- those render at
+   <body> level, outside .ob. They are namespaced --ob-* so nothing here can overwrite a
+   variable the surrounding web layout depends on. */
+:root {
+	--ob-paper: #f7f7f7;        /* Off White  */
+	--ob-card: #ffffff;         /* White      */
+	--ob-ink: #1f242e;          /* Primary Black   */
+	--ob-ink-soft: #626d84;     /* Dark Grey       */
+	--ob-ink-mute: #8a94a8;     /* Mid Grey        */
+	--ob-line: #b9bdc6;         /* Light Grey      */
+	--ob-rule: #e3e5e8;         /* Extra Light Grey */
+	--ob-rule-soft: #f1f2f4;    /* Ultra Light Grey */
+
+	--ob-accent: #2e5cb8;       /* Primary Blue -- progress, completion, action */
+	--ob-accent-dark: #0f1e3d;  /* Dark Blue        */
+	--ob-accent-line: #cfdefc;  /* Light Blue       */
+	--ob-accent-soft: #e7eefe;  /* Extra Light Blue */
+	--ob-accent-faint: #f5f8fe; /* Ultra Light Blue */
+
+	--ob-warn: #d26300;         /* Amber (high) */
+	--ob-warn-line: #ffe8cb;    /* Amber (mid)  */
+	--ob-warn-soft: #fff6ea;    /* Amber (low)  */
+	--ob-star: #d92644;         /* Red (high)   */
+	--ob-star-soft: #fceaed;    /* Red (low)    */
+
+	/* The system defines exactly two: 12px for surfaces, 8px for controls. */
+	--ob-radius: 12px;
+	--ob-radius-sm: 8px;
+	--ob-font: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	--ob-shadow: 0 1px 2px rgba(31, 36, 46, .04);
+}
+.ob {
+	background: var(--ob-paper);
+	color: var(--ob-ink);
+	font-family: var(--ob-font);
 	margin: -15px 0 0;        /* absorb the web layout's default padding */
 	padding-bottom: 140px;
 	min-height: 100vh;
@@ -320,55 +344,55 @@
 /* --- header ------------------------------------------------------------- */
 .ob-hero {
 	padding: 56px 0 34px;
-	border-bottom: 1px solid var(--rule);
-	background: linear-gradient(180deg, #fdfcfa 0%, var(--paper) 100%);
+	border-bottom: 1px solid var(--ob-rule);
+	background: linear-gradient(180deg, var(--ob-card) 0%, var(--ob-paper) 100%);
 	margin-bottom: 34px;
 }
 .ob-eyebrow {
 	font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
-	color: var(--ink-soft); margin: 0 0 12px;
+	color: var(--ob-accent); font-weight: 700; margin: 0 0 12px;
 }
 .ob-title {
-	font-family: var(--serif);
+	font-family: var(--ob-font); font-weight: 800;
 	font-size: clamp(30px, 5vw, 42px);
-	line-height: 1.1; letter-spacing: -.01em;
-	margin: 0 0 10px; color: var(--ink);
+	line-height: 1.1; letter-spacing: -.02em;
+	margin: 0 0 10px; color: var(--ob-ink);
 }
-.ob-lede { font-size: 15px; color: var(--ink-soft); margin: 0; }
-.ob-date { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.ob-lede { font-size: 15px; color: var(--ob-ink-soft); margin: 0; }
+.ob-date { color: var(--ob-ink); font-weight: 700; white-space: nowrap; }
 
 .ob-progress { margin-top: 26px; }
 .ob-progress-bar {
-	height: 5px; border-radius: 99px; background: var(--rule); overflow: hidden;
+	height: 6px; border-radius: 99px; background: var(--ob-rule); overflow: hidden;
 }
 .ob-progress-bar span {
-	display: block; height: 100%; width: 0; border-radius: 99px; background: var(--accent);
+	display: block; height: 100%; width: 0; border-radius: 99px; background: var(--ob-accent);
 	transition: width .5s cubic-bezier(.4,0,.2,1);
 }
-.ob-progress-text { font-size: 12.5px; color: var(--ink-soft); margin: 9px 0 0; }
-.ob-progress-text b { color: var(--ink); }
+.ob-progress-text { font-size: 12.5px; color: var(--ob-ink-soft); margin: 9px 0 0; }
+.ob-progress-text b { color: var(--ob-ink); font-weight: 700; }
 
 /* --- notes -------------------------------------------------------------- */
 .ob-note {
-	border-radius: var(--radius); padding: 16px 18px; margin-bottom: 24px;
+	border-radius: var(--ob-radius); padding: 16px 18px; margin-bottom: 24px;
 	font-size: 14px; line-height: 1.55;
 }
-.ob-note--warn { background: var(--warn-soft); color: var(--warn); border: 1px solid #f1e4c8; }
-.ob-note--done { background: var(--accent-soft); color: var(--accent); border: 1px solid #d6e6df; }
+.ob-note--warn { background: var(--ob-warn-soft); color: var(--ob-warn); border: 1px solid var(--ob-warn-line); }
+.ob-note--done { background: var(--ob-accent-soft); color: var(--ob-accent-dark); border: 1px solid var(--ob-accent-line); }
 .ob-note ul { margin: 8px 0 0; padding-left: 18px; }
 .ob-note li { margin: 2px 0; }
 .is-hidden { display: none; }
 
 /* --- cards -------------------------------------------------------------- */
 .ob-card {
-	background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius);
+	background: var(--ob-card); border: 1px solid var(--ob-rule); border-radius: var(--ob-radius);
 	padding: 26px; margin-bottom: 20px;
-	box-shadow: 0 1px 2px rgba(23,21,15,.03);
+	box-shadow: var(--ob-shadow);
 }
-.ob-card--final { background: transparent; box-shadow: none; border-style: dashed; }
+.ob-card--final { background: transparent; box-shadow: none; border-style: dashed; border-color: var(--ob-accent-line); }
 .ob-h2 {
-	font-family: var(--serif); font-size: 19px; font-weight: 600;
-	margin: 0 0 22px; padding-bottom: 12px; border-bottom: 1px solid var(--rule);
+	font-family: var(--ob-font); font-size: 19px; font-weight: 700; letter-spacing: -.01em;
+	margin: 0 0 22px; padding-bottom: 12px; border-bottom: 1px solid var(--ob-rule);
 }
 
 /* --- fields ------------------------------------------------------------- */
@@ -377,92 +401,95 @@
 @media (max-width: 620px) { .ob-grid { grid-template-columns: 1fr; } }
 
 .ob-label {
-	display: block; font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
-	color: var(--ink); margin-bottom: 7px;
+	display: block; font-size: 12.5px; font-weight: 700; letter-spacing: .01em;
+	color: var(--ob-ink); margin-bottom: 7px;
 }
-.ob-star { color: var(--star); margin-left: 3px; }
+.ob-star { color: var(--ob-star); margin-left: 3px; }
 .ob-input {
-	width: 100%; padding: 10px 13px; font-size: 14px; color: var(--ink);
-	background: #fff; border: 1px solid var(--rule); border-radius: 9px;
+	width: 100%; padding: 10px 13px; font-size: 14px; color: var(--ob-ink);
+	background: var(--ob-card); border: 1px solid var(--ob-rule); border-radius: var(--ob-radius-sm);
 	transition: border-color .15s, box-shadow .15s; font-family: inherit;
 }
-.ob-input:hover { border-color: #d6cfc1; }
+.ob-input:hover { border-color: var(--ob-line); }
 .ob-input:focus {
-	outline: none; border-color: var(--accent);
-	box-shadow: 0 0 0 3px rgba(31,95,79,.10);
+	outline: none; border-color: var(--ob-accent);
+	box-shadow: 0 0 0 3px rgba(46, 92, 184, .14);
 }
 textarea.ob-input { resize: vertical; min-height: 82px; }
 .ob-selectwrap { position: relative; }
 .ob-selectwrap::after {
 	content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
-	border-right: 1.5px solid var(--ink-soft); border-bottom: 1.5px solid var(--ink-soft);
+	border-right: 1.5px solid var(--ob-ink-soft); border-bottom: 1.5px solid var(--ob-ink-soft);
 	transform: translateY(-70%) rotate(45deg); pointer-events: none;
 }
 .ob-selectwrap select { appearance: none; padding-right: 34px; }
-.ob-hint { font-size: 12px; color: var(--ink-soft); margin: 6px 0 0; line-height: 1.45; }
+.ob-hint { font-size: 12px; color: var(--ob-ink-soft); margin: 6px 0 0; line-height: 1.45; }
 
 /* --- date picker -------------------------------------------------------- */
 .ob-datewrap { position: relative; }
-.ob-date { padding-right: 36px; }
+/* `input.`, not a bare `.ob-date`: the class is also on the joining-date <span> in the
+   hero, and the room this reserves for the calendar icon was showing up there as a 36px
+   gap before the full stop. */
+input.ob-date { padding-right: 36px; }
 .ob-date-icon {
 	position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
-	color: var(--ink-soft); pointer-events: none;
+	color: var(--ob-ink-soft); pointer-events: none;
 }
 .ob-cal {
 	position: absolute; z-index: 40; margin-top: 6px; width: 268px; padding: 12px;
-	background: #fff; border: 1px solid var(--rule); border-radius: 12px;
-	box-shadow: 0 14px 34px -10px rgba(23,21,15,.26);
+	background: var(--ob-card); border: 1px solid var(--ob-rule); border-radius: var(--ob-radius);
+	box-shadow: 0 14px 34px -10px rgba(31, 36, 46, .22);
 	animation: ob-pop .16s ease-out;
 }
 .ob-cal-head { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
 .ob-cal-head select {
-	flex: 1; padding: 5px 7px; font-size: 12.5px; font-family: inherit; color: var(--ink);
-	border: 1px solid var(--rule); border-radius: 7px; background: #fff; cursor: pointer;
+	flex: 1; padding: 5px 7px; font-size: 12.5px; font-family: inherit; color: var(--ob-ink);
+	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius-sm); background: var(--ob-card); cursor: pointer;
 }
-.ob-cal-head select:focus { outline: none; border-color: var(--accent); }
+.ob-cal-head select:focus { outline: none; border-color: var(--ob-accent); }
 .ob-nav {
-	width: 26px; height: 26px; flex: none; border: 1px solid var(--rule); border-radius: 7px;
-	background: #fff; color: var(--ink-soft); cursor: pointer; font-size: 14px; line-height: 1;
+	width: 26px; height: 26px; flex: none; border: 1px solid var(--ob-rule); border-radius: var(--ob-radius-sm);
+	background: var(--ob-card); color: var(--ob-ink-soft); cursor: pointer; font-size: 14px; line-height: 1;
 }
-.ob-nav:hover { border-color: var(--accent); color: var(--accent); }
+.ob-nav:hover { border-color: var(--ob-accent); color: var(--ob-accent); }
 .ob-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .ob-cal-dow {
 	font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-	color: var(--ink-soft); text-align: center; padding-bottom: 5px;
+	color: var(--ob-ink-mute); text-align: center; padding-bottom: 5px;
 }
 .ob-cal-day {
-	border: 0; background: none; font-family: inherit; font-size: 12.5px; color: var(--ink);
-	height: 31px; border-radius: 7px; cursor: pointer; transition: background .12s, color .12s;
+	border: 0; background: none; font-family: inherit; font-size: 12.5px; color: var(--ob-ink);
+	height: 31px; border-radius: var(--ob-radius-sm); cursor: pointer; transition: background .12s, color .12s;
 }
-.ob-cal-day:hover { background: var(--accent-soft); }
-.ob-cal-day.is-muted { color: #c4bdb0; }
-.ob-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); font-weight: 700; }
-.ob-cal-day.is-on { background: var(--accent); color: #fff; font-weight: 700; }
+.ob-cal-day:hover { background: var(--ob-accent-soft); }
+.ob-cal-day.is-muted { color: var(--ob-line); }
+.ob-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--ob-accent); color: var(--ob-accent); font-weight: 700; }
+.ob-cal-day.is-on { background: var(--ob-accent); color: var(--ob-card); font-weight: 700; }
 .ob-cal-foot {
 	display: flex; justify-content: space-between; margin-top: 9px; padding-top: 9px;
-	border-top: 1px solid var(--rule);
+	border-top: 1px solid var(--ob-rule);
 }
 .ob-cal-foot button {
-	border: 0; background: none; font-family: inherit; font-size: 12px; font-weight: 600;
-	color: var(--accent); cursor: pointer; padding: 3px 5px; border-radius: 5px;
+	border: 0; background: none; font-family: inherit; font-size: 12px; font-weight: 700;
+	color: var(--ob-accent); cursor: pointer; padding: 3px 5px; border-radius: 5px;
 }
-.ob-cal-foot button:hover { background: var(--accent-soft); }
+.ob-cal-foot button:hover { background: var(--ob-accent-soft); }
 
 .ob-locked {
 	display: flex; align-items: center; justify-content: space-between; gap: 10px;
-	padding: 10px 13px; font-size: 14px; color: var(--ink-soft);
-	background: #f6f4ef; border: 1px solid var(--rule); border-radius: 9px;
+	padding: 10px 13px; font-size: 14px; color: var(--ob-ink-soft);
+	background: var(--ob-rule-soft); border: 1px solid var(--ob-rule); border-radius: var(--ob-radius-sm);
 }
 .ob-locked svg { flex: none; opacity: .45; }
 
 /* Mirrored from another field -- readable, clearly not yours to edit. */
 .ob-field.is-mirrored .ob-input {
-	background: #f6f4ef; color: var(--ink-soft); cursor: default; border-style: dashed;
+	background: var(--ob-rule-soft); color: var(--ob-ink-soft); cursor: default; border-style: dashed;
 }
-.ob-field.is-mirrored .ob-input:focus { box-shadow: none; border-color: var(--rule); }
+.ob-field.is-mirrored .ob-input:focus { box-shadow: none; border-color: var(--ob-rule); }
 
 .ob-check { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; cursor: pointer; }
-.ob-check input { margin: 2px 0 0; width: 15px; height: 15px; accent-color: var(--accent); }
+.ob-check input { margin: 2px 0 0; width: 15px; height: 15px; accent-color: var(--ob-accent); }
 .ob-declaration { line-height: 1.55; }
 
 /* --- documents ---------------------------------------------------------- */
@@ -471,10 +498,10 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 .ob-docs { display: grid; gap: 9px; }
 .ob-doc {
 	display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px;
-	border: 1px solid var(--rule); border-radius: 11px; padding: 12px 14px;
+	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius); padding: 12px 14px;
 	transition: border-color .18s, background .18s;
 }
-.ob-doc.is-done { border-color: #cfe3db; background: #fafdfb; }
+.ob-doc.is-done { border-color: var(--ob-accent-line); background: var(--ob-accent-faint); }
 .ob-doc-top { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .ob-doc > .ob-hint, .ob-doc > .ob-files { grid-column: 1 / -1; }
 .ob-doc > .ob-files:empty { display: none; }
@@ -484,41 +511,41 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 }
 .ob-doc-tick {
 	width: 19px; height: 19px; flex: none; border-radius: 50%;
-	border: 1.5px solid var(--rule); display: grid; place-items: center; color: #fff;
+	border: 1.5px solid var(--ob-line); display: grid; place-items: center; color: var(--ob-card);
 }
 /* The tick is always in the markup and revealed by state, so script can flip a card to
    done without having to build an SVG. */
 .ob-doc-tick svg { display: none; }
-.ob-doc.is-done .ob-doc-tick { background: var(--accent); border-color: var(--accent); }
+.ob-doc.is-done .ob-doc-tick { background: var(--ob-accent); border-color: var(--ob-accent); }
 .ob-doc.is-done .ob-doc-tick svg { display: block; }
-.ob-doc-name { font-size: 14px; font-weight: 600; }
+.ob-doc-name { font-size: 14px; font-weight: 700; }
 .ob-optional {
-	font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: .07em;
-	color: var(--ink-soft); margin-left: 7px;
+	font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
+	color: var(--ob-ink-mute); margin-left: 7px;
 }
 .ob-file {
 	display: flex; align-items: center; justify-content: space-between; gap: 10px;
 	font-size: 13px; margin-top: 10px; padding: 8px 11px;
-	background: #f6f4ef; border-radius: 8px;
+	background: var(--ob-rule-soft); border-radius: var(--ob-radius-sm);
 }
-.ob-file a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+.ob-file a { color: var(--ob-accent); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
 .ob-remove {
-	border: 0; background: none; color: var(--ink-soft); font-size: 19px; line-height: 1;
+	border: 0; background: none; color: var(--ob-ink-mute); font-size: 19px; line-height: 1;
 	cursor: pointer; padding: 0 3px; border-radius: 5px;
 }
-.ob-remove:hover { color: var(--star); background: #fbeceb; }
+.ob-remove:hover { color: var(--ob-star); background: var(--ob-star-soft); }
 
 /* Replaces the browser's raw "Choose file / No file chosen" control. */
 .ob-drop {
 	display: flex; align-items: baseline; gap: 8px; flex: none;
 	padding: 8px 14px; cursor: pointer; white-space: nowrap;
-	border: 1.5px dashed #ddd6c8; border-radius: 8px;
+	border: 1.5px dashed var(--ob-accent-line); border-radius: var(--ob-radius-sm);
 	transition: border-color .18s, background .18s;
 }
-.ob-drop:hover, .ob-drop.is-over { border-color: var(--accent); background: var(--accent-soft); }
+.ob-drop:hover, .ob-drop.is-over { border-color: var(--ob-accent); background: var(--ob-accent-soft); }
 .ob-drop input { display: none; }
-.ob-drop-main { font-size: 13px; font-weight: 600; color: var(--accent); }
-.ob-drop-sub { font-size: 10.5px; color: var(--ink-soft); letter-spacing: .03em; }
+.ob-drop-main { font-size: 13px; font-weight: 700; color: var(--ob-accent); }
+.ob-drop-sub { font-size: 10.5px; color: var(--ob-ink-mute); letter-spacing: .03em; }
 /* `.is-hidden` is declared earlier in the sheet, so on equal specificity these
    display-carrying rules would win it. Restate it where it has to bite. */
 .ob-drop.is-hidden, .ob-rows-empty.is-hidden { display: none; }
@@ -530,7 +557,7 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
    applicant to see why. */
 .ob-phone { display: grid; grid-template-columns: minmax(0, 8.5rem) 1fr; gap: 8px; }
 .ob-phone-cc {
-	appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%236b6459' stroke-width='1.6'/></svg>");
+	appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23626d84' stroke-width='1.6'/></svg>");
 	background-repeat: no-repeat; background-position: right 11px center;
 	padding-right: 28px; text-overflow: ellipsis;
 }
@@ -542,24 +569,24 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 .ob-rows { display: grid; gap: 12px; }
 .ob-row {
 	position: relative; padding: 15px 16px 13px;
-	border: 1px solid var(--rule); border-radius: 11px; background: #fdfcfa;
+	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius); background: var(--ob-accent-faint);
 }
 .ob-row .ob-grid { margin: 0; }
 .ob-row-remove {
 	position: absolute; top: 9px; right: 11px;
 	border: 0; background: none; padding: 2px 5px; border-radius: 6px; cursor: pointer;
-	font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
-	color: var(--ink-soft); transition: color .15s, background .15s;
+	font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+	color: var(--ob-ink-mute); transition: color .15s, background .15s;
 }
-.ob-row-remove:hover { color: var(--star); background: #fbeceb; }
-.ob-rows-empty { font-size: 12.5px; color: var(--ink-soft); margin: 2px 0 0; font-style: italic; }
+.ob-row-remove:hover { color: var(--ob-star); background: var(--ob-star-soft); }
+.ob-rows-empty { font-size: 12.5px; color: var(--ob-ink-mute); margin: 2px 0 0; font-style: italic; }
 .ob-row-add {
 	margin-top: 12px; padding: 9px 15px; cursor: pointer;
-	font-family: inherit; font-size: 13px; font-weight: 600; color: var(--accent);
-	background: none; border: 1.5px dashed #ddd6c8; border-radius: 8px;
+	font-family: inherit; font-size: 13px; font-weight: 700; color: var(--ob-accent);
+	background: none; border: 1.5px dashed var(--ob-accent-line); border-radius: var(--ob-radius-sm);
 	transition: border-color .18s, background .18s;
 }
-.ob-row-add:hover { border-color: var(--accent); background: var(--accent-soft); }
+.ob-row-add:hover { border-color: var(--ob-accent); background: var(--ob-accent-soft); }
 
 /* A padlock with no reason next to it reads as a bug rather than a policy. */
 .ob-hint--lock { font-style: italic; }
@@ -567,25 +594,29 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 /* --- sticky actions ----------------------------------------------------- */
 .ob-bar {
 	position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-	background: rgba(255,255,255,.93); backdrop-filter: blur(9px);
-	border-top: 1px solid var(--rule);
+	background: rgba(255, 255, 255, .93); backdrop-filter: blur(9px);
+	border-top: 1px solid var(--ob-rule);
 }
 .ob-bar-inner {
 	display: flex; align-items: center; justify-content: space-between; gap: 16px;
 	padding-top: 13px; padding-bottom: 13px;
 }
-.ob-bar-hint { font-size: 12px; color: var(--ink-soft); margin: 0; }
+.ob-bar-hint { font-size: 12px; color: var(--ob-ink-soft); margin: 0; }
 .ob-bar-actions { display: flex; gap: 9px; flex: none; }
 .ob-btn {
-	padding: 9px 17px; font-size: 13.5px; font-weight: 600; font-family: inherit;
-	border-radius: 8px; border: 1px solid var(--rule); background: #fff; color: var(--ink);
+	padding: 9px 17px; font-size: 13.5px; font-weight: 700; font-family: inherit;
+	border-radius: var(--ob-radius-sm); border: 1px solid var(--ob-rule); background: var(--ob-card); color: var(--ob-ink);
 	cursor: pointer; transition: transform .12s, box-shadow .15s, background .15s;
 }
-.ob-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 7px rgba(23,21,15,.09); }
+.ob-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 7px rgba(31, 36, 46, .10); }
 .ob-btn:active { transform: translateY(0); }
-.ob-btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.ob-btn--primary:hover { background: #17493c; }
-.ob-btn[disabled] { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
+.ob-btn--primary { background: var(--ob-accent); border-color: var(--ob-accent); color: var(--ob-card); }
+.ob-btn--primary:hover { background: var(--ob-accent-dark); border-color: var(--ob-accent-dark); }
+/* The system's disabled button is a flat grey fill, not a faded blue one. */
+.ob-btn[disabled] {
+	background: var(--ob-rule-soft); border-color: var(--ob-rule-soft); color: var(--ob-line);
+	cursor: not-allowed; transform: none; box-shadow: none;
+}
 @media (max-width: 620px) {
 	.ob-bar-hint { display: none; }
 	.ob-bar-actions { flex: 1; }
@@ -595,32 +626,32 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 /* --- dialogs ------------------------------------------------------------ */
 /* Frappe renders msgprint at <body> level, outside .ob, so these are scoped to a
    class this page adds to <body>. Never restyle Desk dialogs by accident. */
-body.ob-page .modal-backdrop.show { background: #17150f; opacity: .38; }
+body.ob-page .modal-backdrop.show { background: var(--ob-accent-dark); opacity: .38; }
 body.ob-page .modal-dialog { max-width: 470px; margin-top: 12vh; }
 body.ob-page .modal-content {
-	border: 1px solid #e8e3d9; border-radius: 10px; overflow: hidden;
-	background: #fff; box-shadow: 0 10px 30px -12px rgba(23,21,15,.24);
+	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius); overflow: hidden;
+	background: var(--ob-card); box-shadow: 0 10px 30px -12px rgba(31, 36, 46, .24);
 }
 body.ob-page .modal-header {
-	padding: 18px 22px 12px; border-bottom: 1px solid #f0ece3; align-items: flex-start;
+	padding: 18px 22px 12px; border-bottom: 1px solid var(--ob-rule-soft); align-items: flex-start;
 }
 body.ob-page .modal-title {
-	font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-	font-size: 19px; font-weight: 600; letter-spacing: -.005em; color: #17150f; margin: 0;
+	font-family: var(--ob-font);
+	font-size: 19px; font-weight: 700; letter-spacing: -.01em; color: var(--ob-ink); margin: 0;
 }
 body.ob-page .modal-header .close, body.ob-page .modal-header .btn-modal-close {
 	opacity: .4; padding: 4px; margin: -2px -4px 0 0; border-radius: 7px;
 	transition: opacity .15s, background .15s;
 }
-body.ob-page .modal-header .close:hover { opacity: 1; background: #f4f1ea; }
-body.ob-page .modal-body { padding: 18px 22px 22px; font-size: 14.5px; line-height: 1.62; color: #3d382f; }
-body.ob-page .modal-body b, body.ob-page .modal-body strong { color: #17150f; }
+body.ob-page .modal-header .close:hover { opacity: 1; background: var(--ob-rule-soft); }
+body.ob-page .modal-body { padding: 18px 22px 22px; font-size: 14.5px; line-height: 1.62; color: var(--ob-ink-soft); }
+body.ob-page .modal-body b, body.ob-page .modal-body strong { color: var(--ob-ink); }
 body.ob-page .modal-footer { padding: 0 22px 20px; border: 0; gap: 8px; }
 body.ob-page .modal-footer .btn {
-	padding: 8px 16px; font-size: 13.5px; font-weight: 600; border-radius: 8px;
+	padding: 8px 16px; font-size: 13.5px; font-weight: 700; border-radius: var(--ob-radius-sm);
 }
-body.ob-page .modal-footer .btn-primary { background: #1f5f4f; border-color: #1f5f4f; }
-body.ob-page .modal-footer .btn-primary:hover { background: #17493c; border-color: #17493c; }
+body.ob-page .modal-footer .btn-primary { background: var(--ob-accent); border-color: var(--ob-accent); }
+body.ob-page .modal-footer .btn-primary:hover { background: var(--ob-accent-dark); border-color: var(--ob-accent-dark); }
 
 /* No accent rule and no entrance animation. The portal's msgprint markup carries no
    `.indicator`, so a coloured edge would have to be one fixed colour for every dialog --
