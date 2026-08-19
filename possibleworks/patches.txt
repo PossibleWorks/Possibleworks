@@ -12,3 +12,6 @@ possibleworks.patches.v1_5.create_standard_employee_role_profile
 possibleworks.patches.v1_5.index_employee_onboarding_employee
 possibleworks.patches.v1_5.restyle_employee_letters
 possibleworks.patches.v1_5.add_job_applicant_company_field
+possibleworks.patches.v1_5.create_employee_letters_tab
+possibleworks.patches.v1_5.seed_visa_letter_template
+possibleworks.patches.v1_5.disable_assignment_emails

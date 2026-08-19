@@ -8,19 +8,10 @@ from frappe.utils import escape_html
 
 from possibleworks.hr_documents.letters.utils import (
 	CONTEXT_KEYS,
+	PDF_GENERATOR,
 	get_employee_placeholder_fields,
 )
 
-
-# Which engine renders these letters. wkhtmltopdf, because it is the one already
-# installed in every container of the deployed stack; Chromium is not in the image and
-# was only ever present in the web container as a runtime download, missing entirely
-# from the queue workers that render emailed letters.
-#
-# It is an old Qt-WebKit build with no flexbox and no viewport units, so the letterhead
-# below sticks to block layout and absolute lengths -- a flex column with
-# `min-height:100vh` silently collapses there.
-PDF_GENERATOR = "wkhtmltopdf"
 
 # The logo is hosted rather than a site file: a print worker fetches it unauthenticated,
 # so /files/ and /private/files/ URLs come back empty.

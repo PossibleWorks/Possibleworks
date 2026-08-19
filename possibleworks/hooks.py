@@ -72,6 +72,10 @@ has_permission = {
 }
 
 after_install = "possibleworks.setup.after_install.set_default_branding"
+
+# Relabel third-party apps in the desk sidebar (see the module for why a hook
+# override is not possible).
+extend_bootinfo = ["possibleworks.branding.bootinfo.override_app_titles"]
 after_migrate = "possibleworks.setup.after_install.seed_ai_settings"
 
 website_context = {

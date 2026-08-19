@@ -1,16 +1,29 @@
 // Copyright (c) 2026, Possibleworks and contributors
 // For license information, please see license.txt
 
-// Renders the "Employee Letters" section on the Employee form. Letters are
-// driven by the "Employee Letter Template" doctype, so HR Admins can add
-// their own letters in addition to the seeded defaults (Relieving Letter,
-// Experience Letter, Service Certificate).
+// Renders the letter cards on the Employee form. Letters are driven by the
+// "Employee Letter Template" doctype, so HR Admins can add their own letters in
+// addition to the seeded defaults (Relieving Letter, Experience Letter,
+// Service Certificate, Visa Letter).
+//
+// Each template's `placement` decides which of the two mount points it renders
+// into: the "Letters" tab, or the collapsible section beside the relieving
+// fields on the Employee Exit tab.
 
 frappe.provide("possibleworks.employee_letters");
 
 const LETTER_API = "possibleworks.hr_documents.letters.api";
 const TEMPLATE_DOCTYPE = "Employee Letter Template";
 const ALLOWED_ROLES = ["System Manager", "HR Manager"];
+const STYLE_ID = "pw-employee-letters-css";
+
+// One entry per mount point. `placement` matches the values in
+// hr_documents/letters/utils.py; only the Letters tab authors new templates, so
+// the exit section stays a plain list of the two offboarding letters.
+const MOUNTS = [
+	{ fieldname: "custom_letters_html", placement: "Letters", can_create: true },
+	{ fieldname: "custom_employee_letters_html", placement: "Employee Exit", can_create: false },
+];
 
 const esc = (s) => frappe.utils.escape_html(s == null ? "" : String(s));
 
@@ -21,32 +34,43 @@ frappe.ui.form.on("Employee", {
 });
 
 possibleworks.employee_letters.render = function (frm) {
-	const field = frm.get_field("custom_employee_letters_html");
-	if (!field) return;
+	// A mount is missing until its patch has run, so skip rather than assume both.
+	const mounts = MOUNTS.map((m) => ({ ...m, field: frm.get_field(m.fieldname) })).filter(
+		(m) => m.field
+	);
+	if (!mounts.length) return;
 
 	const has_access = ALLOWED_ROLES.some((r) => frappe.user.has_role(r));
 	if (!has_access) {
-		field.$wrapper.empty();
+		mounts.forEach((m) => m.field.$wrapper.empty());
 		return;
 	}
 
 	if (frm.is_new()) {
-		field.$wrapper.html(
-			`<p class="text-muted small">${__("Save the employee to generate letters.")}</p>`
-		);
+		const note = `<p class="text-muted small">${__("Save the employee to generate letters.")}</p>`;
+		mounts.forEach((m) => m.field.$wrapper.html(note));
 		return;
 	}
 
+	// One call for every mount: the templates are filtered client-side by placement.
 	frappe.call({
 		method: `${LETTER_API}.list_letter_templates`,
 		args: { employee: frm.doc.name },
 		callback(r) {
-			possibleworks.employee_letters.render_cards(frm, field, r.message || []);
+			const templates = r.message || [];
+			mounts.forEach((m) =>
+				possibleworks.employee_letters.render_cards(
+					frm,
+					m,
+					templates.filter((t) => t.placement === m.placement)
+				)
+			);
 		},
 	});
 };
 
-possibleworks.employee_letters.render_cards = function (frm, field, templates) {
+possibleworks.employee_letters.render_cards = function (frm, mount, templates) {
+	const field = mount.field;
 	const cards = templates
 		.map((t) => {
 			const disabled = !t.available;
@@ -78,18 +102,26 @@ possibleworks.employee_letters.render_cards = function (frm, field, templates) {
 		})
 		.join("");
 
-	const empty = templates.length
-		? ""
-		: `<p class="text-muted small">${__("No letter templates yet. Create one to get started.")}</p>`;
+	let empty = "";
+	if (!templates.length) {
+		empty = mount.can_create
+			? __("No letter templates yet. Create one to get started.")
+			: __("No letters configured for this section.");
+		empty = `<p class="text-muted small">${empty}</p>`;
+	}
 
-	field.$wrapper.html(`
-		${possibleworks.employee_letters.styles()}
-		<div class="pw-letters">
-			<div class="pw-letters-toolbar">
+	const toolbar = mount.can_create
+		? `<div class="pw-letters-toolbar">
 				<button class="btn btn-xs btn-default pw-new-letter">
 					${frappe.utils.icon("add", "xs")} ${__("New Letter Template")}
 				</button>
-			</div>
+			</div>`
+		: "";
+
+	possibleworks.employee_letters.inject_styles();
+	field.$wrapper.html(`
+		<div class="pw-letters">
+			${toolbar}
 			<div class="pw-letters-grid">${cards}</div>
 			${empty}
 		</div>
@@ -116,9 +148,19 @@ possibleworks.employee_letters.render_cards = function (frm, field, templates) {
 	});
 };
 
+/**
+ * Add the shared card CSS to the page once.
+ *
+ * Both mount points render the same classes, and each re-renders on every form
+ * refresh -- injecting the stylesheet with the markup would duplicate it.
+ */
+possibleworks.employee_letters.inject_styles = function () {
+	if (document.getElementById(STYLE_ID)) return;
+	$("head").append(`<style id="${STYLE_ID}">${possibleworks.employee_letters.styles()}</style>`);
+};
+
 possibleworks.employee_letters.styles = function () {
 	return `
-	<style>
 		.pw-letters { margin: 4px 0; }
 		.pw-letters-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 		.pw-letters-grid {
@@ -161,7 +203,7 @@ possibleworks.employee_letters.styles = function () {
 			font-size: var(--text-xs, 11px); color: var(--text-muted);
 		}
 		.pw-letter-note > svg { width: 12px; height: 12px; }
-	</style>`;
+	`;
 };
 
 // Open Frappe's native in-desk print view with this letter's format
@@ -333,6 +375,16 @@ possibleworks.employee_letters._open_create_dialog = function (frm, placeholders
 				description: __("Shown on the card; also used as the Print Format name."),
 			},
 			{ fieldname: "cb1", fieldtype: "Column Break" },
+			{
+				// Options come from MOUNTS so this never drifts from what the form renders.
+				fieldname: "placement",
+				label: __("Show Under"),
+				fieldtype: "Select",
+				options: MOUNTS.map((m) => m.placement).join("\n"),
+				default: MOUNTS[0].placement,
+				reqd: 1,
+				description: __("Which part of the Employee form lists this letter."),
+			},
 			{
 				fieldname: "requires_relieving_date",
 				label: __("Requires Relieving Date"),
