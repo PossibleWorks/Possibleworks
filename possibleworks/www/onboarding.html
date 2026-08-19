@@ -11,7 +11,7 @@
 <div class="ob-row">
 	<div class="ob-grid">
 	{% for c in t.columns %}
-		<div class="ob-field {% if c.fieldtype in ('Small Text','Text','Long Text') %}ob-field--wide{% endif %}">
+		<div class="ob-field {% if c.fieldtype in ('Small Text','Text','Long Text','Phone') %}ob-field--wide{% endif %}">
 			<label class="ob-label">{{ c.label }}</label>
 			{% if c.fieldtype == "Select" %}
 				<div class="ob-selectwrap">
@@ -113,7 +113,7 @@
 			<h2 class="ob-h2">{{ _("Your details") }}</h2>
 			<div class="ob-grid">
 			{% for f in fields %}
-				<div class="ob-field {% if f.fieldtype in ('Small Text','Text','Long Text') %}ob-field--wide{% endif %}"
+				<div class="ob-field {% if f.fieldtype in ('Small Text','Text','Long Text','Phone') %}ob-field--wide{% endif %}"
 					data-fieldname="{{ f.fieldname }}">
 					<label class="ob-label" for="f-{{ f.fieldname }}">
 						{{ _(f.label) }}{% if f.required %}<span class="ob-star">*</span>{% endif %}
@@ -126,7 +126,6 @@
 								<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
 							</svg>
 						</div>
-						{% if f.locked_reason %}<p class="ob-hint ob-hint--lock">{{ f.locked_reason }}</p>{% endif %}
 					{% elif f.fieldtype == "Phone" %}
 						{# A Phone must carry a dialling code: the server parses it with no
 						   default region, so a bare 10-digit number is rejected outright. #}
@@ -134,7 +133,12 @@
 							<select class="ob-input ob-phone-cc" aria-label="{{ _('Country code') }}"
 								{% if not editable %}disabled{% endif %}>
 								{% for c in country_codes %}
-								<option value="{{ c.isd }}" {% if c.isd == f.value_isd %}selected{% endif %}>{{ c.name }} ({{ c.isd }})</option>
+								{#- Flag + code only: the country name made this control wider than the number
+								    field beside it. `value` stays the dialling code, which is what the
+								    script reads and what the server needs. `title` keeps the name
+								    reachable on hover. -#}
+								<option value="{{ c.isd }}" title="{{ c.name }}"
+									{% if c.isd == f.value_isd %}selected{% endif %}>{{ c.flag }} {{ c.isd }}</option>
 								{% endfor %}
 							</select>
 							<input id="f-{{ f.fieldname }}" name="{{ f.fieldname }}"
@@ -182,7 +186,6 @@
 					{% endif %}
 
 					{% if f.help_text or f.description %}
-						<p class="ob-hint">{{ f.help_text or f.description }}</p>
 					{% endif %}
 				</div>
 			{% endfor %}
@@ -196,13 +199,11 @@
 			<h2 class="ob-h2">
 				{{ _(t.label) }}{% if t.required %}<span class="ob-star">*</span>{% endif %}
 			</h2>
-			{% if t.help_text %}<p class="ob-hint">{{ t.help_text }}</p>{% endif %}
 
 			<div class="ob-rows">
 			{% for r in t.rows %}{{ ob_row(t, r, editable) }}{% endfor %}
 			</div>
 
-			<p class="ob-rows-empty {% if t.rows %}is-hidden{% endif %}">{{ _("Nothing added yet.") }}</p>
 
 			{% if t.editable and editable %}
 			{# The blank row is rendered by the SAME macro as the saved ones, so an added
@@ -223,41 +224,29 @@
 				   state -- it is never the only thing that can produce it. #}
 				<div class="ob-doc {% if d.files %}is-done{% endif %}" data-document-type="{{ d.document_type }}"
 					data-allow-multiple="{{ 1 if d.allow_multiple else 0 }}">
-					<div class="ob-doc-top">
-						<span class="ob-doc-tick" aria-hidden="true">
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
-						</span>
-						<div class="ob-doc-name">
-							{{ d.document_type }}{% if d.required %}<span class="ob-star">*</span>{% endif %}
-							{% if not d.required %}<span class="ob-optional">{{ _("optional") }}</span>{% endif %}
-						</div>
+					{#- A red asterisk, the same marker the fields above use for a required
+					    answer. Whether a document is in yet is answered by the file listed
+					    below it, so a status chip only repeated that. -#}
+					<div class="ob-doc-name">
+						{{ d.document_type }}{% if d.required %}<span class="ob-star">*</span>{% endif %}
 					</div>
 
-					{% if d.instructions %}<p class="ob-hint">{{ d.instructions }}</p>{% endif %}
-
-					<div class="ob-files">
-					{% for file in d.files %}
-						<div class="ob-file">
+					<div class="ob-files">{% for file in d.files %}<div class="ob-file">
 							<a href="{{ file.file_url }}" target="_blank" rel="noopener">{{ file.file_name }}</a>
-							{% if editable %}
+							{%- if editable %}
 							<button type="button" class="ob-remove" data-row="{{ file.row_name }}"
 								aria-label="{{ _('Remove') }}">&times;</button>
-							{% endif %}
-						</div>
-					{% endfor %}
-					</div>
+							{%- endif %}
+						</div>{% endfor %}</div>
 
 					{% if editable %}
 						<label class="ob-drop {% if d.files and not d.allow_multiple %}is-hidden{% endif %}">
 							<input type="file" class="ob-upload" data-document-type="{{ d.document_type }}"
 								{% if d.allowed_extensions %}accept=".{{ d.allowed_extensions.replace(',', ',.') }}"{% endif %}>
 							<span class="ob-drop-main"
-								data-first="{{ _('Choose a file') }}" data-more="{{ _('Add another') }}">
-								{% if d.files %}{{ _("Add another") }}{% else %}{{ _("Choose a file") }}{% endif %}
+								data-first="{{ _('Upload') }}" data-more="{{ _('Add another') }}">
+								{% if d.files %}{{ _("Add another") }}{% else %}{{ _("Upload") }}{% endif %}
 							</span>
-							{% if d.allowed_extensions %}
-								<span class="ob-drop-sub">{{ d.allowed_extensions.replace(',', ' · ') }}</span>
-							{% endif %}
 						</label>
 					{% endif %}
 				</div>
@@ -280,7 +269,6 @@
 	{% if editable %}
 	<div class="ob-bar">
 		<div class="ob-shell ob-bar-inner">
-			<p class="ob-bar-hint">{{ _("Your progress is saved. You can return to this page any time.") }}</p>
 			<div class="ob-bar-actions">
 				<button type="button" id="ob-save" class="ob-btn">{{ _("Save") }}</button>
 				<button type="button" id="ob-submit" class="ob-btn ob-btn--primary">{{ _("Submit to HR") }}</button>
@@ -304,7 +292,7 @@
    <body> level, outside .ob. They are namespaced --ob-* so nothing here can overwrite a
    variable the surrounding web layout depends on. */
 :root {
-	--ob-paper: #f7f7f7;        /* Off White  */
+	--ob-paper: #f5f8fe;        /* Ultra Light Blue -- the page ground */
 	--ob-card: #ffffff;         /* White      */
 	--ob-ink: #1f242e;          /* Primary Black   */
 	--ob-ink-soft: #626d84;     /* Dark Grey       */
@@ -339,23 +327,36 @@
 	padding-bottom: 140px;
 	min-height: 100vh;
 }
+/* One flat reset rather than a value per element. The web layout puts 0.06em on body
+   and -0.025em on every h1-h3, so anything left unset here inherits tracking from
+   outside the page -- which is what made it look inconsistent between headings, labels
+   and inputs. `.ob *` outranks both. */
+/* The ground goes on <body>, because main.container caps the content at 1290px with
+   80px of side padding -- so .ob alone left the body's white showing down both gutters
+   and below the sticky bar. Every element between the two is transparent. */
+body.ob-page { background: var(--ob-paper); }
+
+.ob, .ob * { letter-spacing: 0; }
+
 .ob-shell { max-width: 680px; margin: 0 auto; padding: 0 22px; }
 
 /* --- header ------------------------------------------------------------- */
+/* No band of its own. Its gradient and rule only spanned main.container's width, so
+   against a full-width ground they showed up as a lighter rectangle with two visible
+   seams -- and the system has no gradient in it besides the AI one. The ground now runs
+   unbroken from the navbar down; the spacing alone separates the title from the form. */
 .ob-hero {
-	padding: 56px 0 34px;
-	border-bottom: 1px solid var(--ob-rule);
-	background: linear-gradient(180deg, var(--ob-card) 0%, var(--ob-paper) 100%);
-	margin-bottom: 34px;
+	padding: 56px 0 30px;
+	margin-bottom: 20px;
 }
 .ob-eyebrow {
-	font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+	font-size: 11px;
 	color: var(--ob-accent); font-weight: 700; margin: 0 0 12px;
 }
 .ob-title {
 	font-family: var(--ob-font); font-weight: 800;
 	font-size: clamp(30px, 5vw, 42px);
-	line-height: 1.1; letter-spacing: -.02em;
+	line-height: 1.1;
 	margin: 0 0 10px; color: var(--ob-ink);
 }
 .ob-lede { font-size: 15px; color: var(--ob-ink-soft); margin: 0; }
@@ -389,9 +390,11 @@
 	padding: 26px; margin-bottom: 20px;
 	box-shadow: var(--ob-shadow);
 }
-.ob-card--final { background: transparent; box-shadow: none; border-style: dashed; border-color: var(--ob-accent-line); }
+/* Same surface and stroke as every other card -- only the padding is tighter, because
+   it holds a single line of text. */
+.ob-card--final { padding: 16px 18px; }
 .ob-h2 {
-	font-family: var(--ob-font); font-size: 19px; font-weight: 700; letter-spacing: -.01em;
+	font-family: var(--ob-font); font-size: 19px; font-weight: 700;
 	margin: 0 0 22px; padding-bottom: 12px; border-bottom: 1px solid var(--ob-rule);
 }
 
@@ -401,7 +404,7 @@
 @media (max-width: 620px) { .ob-grid { grid-template-columns: 1fr; } }
 
 .ob-label {
-	display: block; font-size: 12.5px; font-weight: 700; letter-spacing: .01em;
+	display: block; font-size: 12.5px; font-weight: 700;
 	color: var(--ob-ink); margin-bottom: 7px;
 }
 .ob-star { color: var(--ob-star); margin-left: 3px; }
@@ -411,6 +414,11 @@
 	transition: border-color .15s, box-shadow .15s; font-family: inherit;
 }
 .ob-input:hover { border-color: var(--ob-line); }
+/* Same treatment as a disabled button: Ultra Light Grey fill, Mid Grey text. */
+.ob-input:disabled {
+	background: var(--ob-rule-soft); border-color: var(--ob-rule);
+	color: var(--ob-ink-mute); cursor: default;
+}
 .ob-input:focus {
 	outline: none; border-color: var(--ob-accent);
 	box-shadow: 0 0 0 3px rgba(46, 92, 184, .14);
@@ -423,7 +431,6 @@ textarea.ob-input { resize: vertical; min-height: 82px; }
 	transform: translateY(-70%) rotate(45deg); pointer-events: none;
 }
 .ob-selectwrap select { appearance: none; padding-right: 34px; }
-.ob-hint { font-size: 12px; color: var(--ob-ink-soft); margin: 6px 0 0; line-height: 1.45; }
 
 /* --- date picker -------------------------------------------------------- */
 .ob-datewrap { position: relative; }
@@ -454,7 +461,7 @@ input.ob-date { padding-right: 36px; }
 .ob-nav:hover { border-color: var(--ob-accent); color: var(--ob-accent); }
 .ob-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .ob-cal-dow {
-	font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+	font-size: 10px; font-weight: 700; text-transform: uppercase;
 	color: var(--ob-ink-mute); text-align: center; padding-bottom: 5px;
 }
 .ob-cal-day {
@@ -482,51 +489,104 @@ input.ob-date { padding-right: 36px; }
 }
 .ob-locked svg { flex: none; opacity: .45; }
 
-/* Mirrored from another field -- readable, clearly not yours to edit. */
+/* Mirrored from another field -- readable, clearly not yours to edit. The grey fill
+   carries that on its own; the dashed edge it used to have is not in the system. */
 .ob-field.is-mirrored .ob-input {
-	background: var(--ob-rule-soft); color: var(--ob-ink-soft); cursor: default; border-style: dashed;
+	background: var(--ob-rule-soft); color: var(--ob-ink-soft); cursor: default;
 }
 .ob-field.is-mirrored .ob-input:focus { box-shadow: none; border-color: var(--ob-rule); }
 
-.ob-check { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; cursor: pointer; }
-.ob-check input { margin: 2px 0 0; width: 15px; height: 15px; accent-color: var(--ob-accent); }
+/* Centred on the label rather than pinned to its top edge, which left the box floating
+   above a single line of text. */
+/* `margin: 0` is the fix, not the alignment: both this and `.ob-drop` are <label>s, and
+   the framework's reboot gives every label `margin-bottom: 8px`. As a grid or flex item
+   that 8px joins the item's margin box, so the row sized itself 8px taller than its
+   tallest child and centring then pushed the content to the top with the slack below. */
+.ob-check { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 14px; cursor: pointer; }
+/* Traced from the system's Checkbox page: default is white with a 1px Extra Light Grey
+   stroke at a 4px radius; hover fills Extra Light Blue with a Light Blue stroke; selected
+   is a solid Primary Blue square with NO stroke and a white tick just over half the box
+   wide. Disabled reuses the greys the system uses everywhere else for it.
+
+   The `!important` and the attribute selector are both load-bearing. The framework's
+   element/checkbox.scss forces `width: var(--checkbox-size) !important` and
+   `margin-right: !important`, which is what made the box 14x15 instead of square, and its
+   `:checked` rule sets `background-size: 57%, 100%` for a two-layer icon+gradient fill --
+   with one layer here that 57% threw the tick off centre. Every background longhand is
+   therefore restated rather than using the shorthand. */
+.ob-check input[type="checkbox"] {
+	appearance: none; -webkit-appearance: none;
+	box-sizing: border-box;
+	width: 18px !important; height: 18px; flex: none;
+	margin: 0 !important;
+	border: 1px solid var(--ob-rule); border-radius: 4px;
+	background-color: var(--ob-card);
+	background-image: none;
+	background-repeat: no-repeat;
+	background-position: center center;
+	background-size: 10px 8px;
+	cursor: pointer;
+	transition: background-color .15s, border-color .15s;
+}
+.ob-check input[type="checkbox"]:hover {
+	border-color: var(--ob-accent-line); background-color: var(--ob-accent-soft);
+}
+.ob-check input[type="checkbox"]:checked {
+	border: 0;
+	background-color: var(--ob-accent);
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='8' viewBox='0 0 10 8'><path d='M1 4.2l2.7 2.7L9 1.1' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+	background-size: 10px 8px;
+}
+.ob-check input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 3px rgba(46, 92, 184, .14); }
+.ob-check input[type="checkbox"]:disabled {
+	cursor: default; border: 1px solid var(--ob-rule); background-color: var(--ob-rule-soft);
+}
+.ob-check input[type="checkbox"]:disabled:checked {
+	border: 0; background-color: var(--ob-line);
+}
 .ob-declaration { line-height: 1.55; }
 
 /* --- documents ---------------------------------------------------------- */
 /* Compact rows, not stacked panels -- a checklist of eleven documents has to stay
    scannable, and a tall card per item turns it into endless scrolling. */
-.ob-docs { display: grid; gap: 9px; }
+.ob-docs { display: grid; gap: 8px; }
+/* Every row is the same two-column shape -- name on the left, the upload control right
+   aligned beside it -- and any attached files drop into a second row spanning both
+   tracks. Each child is placed explicitly rather than left to auto-placement, which is
+   what made rows jump around as soon as one of them had a file and the others did not. */
 .ob-doc {
-	display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px;
-	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius); padding: 12px 14px;
-	transition: border-color .18s, background .18s;
+	display: grid; grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center; gap: 8px 12px;
+	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius); padding: 11px 14px;
+	transition: border-color .18s;
 }
-.ob-doc.is-done { border-color: var(--ob-accent-line); background: var(--ob-accent-faint); }
-.ob-doc-top { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.ob-doc > .ob-hint, .ob-doc > .ob-files { grid-column: 1 / -1; }
+.ob-doc.is-done { border-color: var(--ob-accent-line); }
+/* align-self on both, not just align-items on the container: the upload control is a
+   flex label, and leaving its alignment to the container let the row track size itself
+   from a baseline rather than from the taller item -- which parked the name and the
+   button near the top of the row with the slack underneath. */
+/* min-height matches the upload control's, so the name row keeps one height whether the
+   control is showing, hidden after a single-file upload, or absent on a read-only page. */
+.ob-doc > .ob-doc-name {
+	grid-column: 1; grid-row: 1; align-self: center;
+	display: flex; align-items: center; min-height: 36px;
+}
+.ob-doc > .ob-drop { grid-column: 2; grid-row: 1; align-self: center; justify-self: end; }
+.ob-doc > .ob-files { grid-column: 1 / -1; grid-row: 2; align-self: start; }
 .ob-doc > .ob-files:empty { display: none; }
 @media (max-width: 560px) {
-	.ob-doc { grid-template-columns: 1fr; }
-	.ob-doc > .ob-drop { grid-column: 1 / -1; }
+	.ob-doc { grid-template-columns: minmax(0, 1fr); }
+	.ob-doc > .ob-drop { grid-column: 1; grid-row: 2; justify-self: stretch; }
+	.ob-doc > .ob-files { grid-row: 3; }
 }
-.ob-doc-tick {
-	width: 19px; height: 19px; flex: none; border-radius: 50%;
-	border: 1.5px solid var(--ob-line); display: grid; place-items: center; color: var(--ob-card);
-}
-/* The tick is always in the markup and revealed by state, so script can flip a card to
-   done without having to build an SVG. */
-.ob-doc-tick svg { display: none; }
-.ob-doc.is-done .ob-doc-tick { background: var(--ob-accent); border-color: var(--ob-accent); }
-.ob-doc.is-done .ob-doc-tick svg { display: block; }
 .ob-doc-name { font-size: 14px; font-weight: 700; }
-.ob-optional {
-	font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
-	color: var(--ob-ink-mute); margin-left: 7px;
-}
+
+
+.ob-files { display: grid; gap: 6px; }
 .ob-file {
 	display: flex; align-items: center; justify-content: space-between; gap: 10px;
-	font-size: 13px; margin-top: 10px; padding: 8px 11px;
-	background: var(--ob-rule-soft); border-radius: var(--ob-radius-sm);
+	font-size: 13px; padding: 8px 11px;
+	background: var(--ob-accent-faint); border-radius: var(--ob-radius-sm);
 }
 .ob-file a { color: var(--ob-accent); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
 .ob-remove {
@@ -537,25 +597,28 @@ input.ob-date { padding-right: 36px; }
 
 /* Replaces the browser's raw "Choose file / No file chosen" control. */
 .ob-drop {
-	display: flex; align-items: baseline; gap: 8px; flex: none;
+	display: flex; align-items: center; gap: 8px; flex: none; margin: 0;
 	padding: 8px 14px; cursor: pointer; white-space: nowrap;
-	border: 1.5px dashed var(--ob-accent-line); border-radius: var(--ob-radius-sm);
-	transition: border-color .18s, background .18s;
+	border: 0; border-radius: var(--ob-radius-sm); background: var(--ob-accent-soft);
+	transition: background .18s;
 }
-.ob-drop:hover, .ob-drop.is-over { border-color: var(--ob-accent); background: var(--ob-accent-soft); }
+/* Deepening the fill is what signals a live drop target now that there is no dashed
+   edge to brighten -- the system has no dashed border in it. */
+.ob-drop:hover, .ob-drop.is-over { background: var(--ob-accent-line); }
 .ob-drop input { display: none; }
 .ob-drop-main { font-size: 13px; font-weight: 700; color: var(--ob-accent); }
-.ob-drop-sub { font-size: 10.5px; color: var(--ob-ink-mute); letter-spacing: .03em; }
 /* `.is-hidden` is declared earlier in the sheet, so on equal specificity these
    display-carrying rules would win it. Restate it where it has to bite. */
-.ob-drop.is-hidden, .ob-rows-empty.is-hidden { display: none; }
+.ob-drop.is-hidden { display: none; }
 @media (max-width: 560px) { .ob-drop { justify-content: center; } }
 
 /* --- phone ---------------------------------------------------------------
    The dialling code is a control, not decoration: without it the value fails
    `validate_phone_number_with_country_code` server-side and there is no way for the
    applicant to see why. */
-.ob-phone { display: grid; grid-template-columns: minmax(0, 8.5rem) 1fr; gap: 8px; }
+/* Just wide enough for a flag, the longest dialling code (+1684) and the chevron --
+   everything left over goes to the number, which is the part being typed. */
+.ob-phone { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; }
 .ob-phone-cc {
 	appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23626d84' stroke-width='1.6'/></svg>");
 	background-repeat: no-repeat; background-position: right 11px center;
@@ -575,21 +638,17 @@ input.ob-date { padding-right: 36px; }
 .ob-row-remove {
 	position: absolute; top: 9px; right: 11px;
 	border: 0; background: none; padding: 2px 5px; border-radius: 6px; cursor: pointer;
-	font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+	font-size: 11px; font-weight: 700; text-transform: uppercase;
 	color: var(--ob-ink-mute); transition: color .15s, background .15s;
 }
 .ob-row-remove:hover { color: var(--ob-star); background: var(--ob-star-soft); }
-.ob-rows-empty { font-size: 12.5px; color: var(--ob-ink-mute); margin: 2px 0 0; font-style: italic; }
 .ob-row-add {
 	margin-top: 12px; padding: 9px 15px; cursor: pointer;
 	font-family: inherit; font-size: 13px; font-weight: 700; color: var(--ob-accent);
-	background: none; border: 1.5px dashed var(--ob-accent-line); border-radius: var(--ob-radius-sm);
-	transition: border-color .18s, background .18s;
+	background: var(--ob-accent-soft); border: 0; border-radius: var(--ob-radius-sm);
+	transition: background .18s;
 }
-.ob-row-add:hover { border-color: var(--ob-accent); background: var(--ob-accent-soft); }
-
-/* A padlock with no reason next to it reads as a bug rather than a policy. */
-.ob-hint--lock { font-style: italic; }
+.ob-row-add:hover { background: var(--ob-accent-line); }
 
 /* --- sticky actions ----------------------------------------------------- */
 .ob-bar {
@@ -598,27 +657,27 @@ input.ob-date { padding-right: 36px; }
 	border-top: 1px solid var(--ob-rule);
 }
 .ob-bar-inner {
-	display: flex; align-items: center; justify-content: space-between; gap: 16px;
+	display: flex; align-items: center; justify-content: flex-end; gap: 16px;
 	padding-top: 13px; padding-bottom: 13px;
 }
-.ob-bar-hint { font-size: 12px; color: var(--ob-ink-soft); margin: 0; }
 .ob-bar-actions { display: flex; gap: 9px; flex: none; }
+/* Three variants and no others, per the system's Button page: secondary is a flat
+   Extra Light Blue fill with Primary Blue text and no border; primary is a solid
+   Primary Blue fill; disabled is a flat Ultra Light Grey fill with Light Grey text.
+   Nothing in the system carries a shadow or lifts on hover, so neither do these. */
 .ob-btn {
 	padding: 9px 17px; font-size: 13.5px; font-weight: 700; font-family: inherit;
-	border-radius: var(--ob-radius-sm); border: 1px solid var(--ob-rule); background: var(--ob-card); color: var(--ob-ink);
-	cursor: pointer; transition: transform .12s, box-shadow .15s, background .15s;
+	border: 0; border-radius: var(--ob-radius-sm);
+	background: var(--ob-accent-soft); color: var(--ob-accent);
+	cursor: pointer; transition: background .15s, color .15s;
 }
-.ob-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 7px rgba(31, 36, 46, .10); }
-.ob-btn:active { transform: translateY(0); }
-.ob-btn--primary { background: var(--ob-accent); border-color: var(--ob-accent); color: var(--ob-card); }
-.ob-btn--primary:hover { background: var(--ob-accent-dark); border-color: var(--ob-accent-dark); }
-/* The system's disabled button is a flat grey fill, not a faded blue one. */
-.ob-btn[disabled] {
-	background: var(--ob-rule-soft); border-color: var(--ob-rule-soft); color: var(--ob-line);
-	cursor: not-allowed; transform: none; box-shadow: none;
+.ob-btn:hover { background: var(--ob-accent-line); }
+.ob-btn--primary { background: var(--ob-accent); color: var(--ob-card); }
+.ob-btn--primary:hover { background: var(--ob-accent-dark); }
+.ob-btn[disabled], .ob-btn--primary[disabled] {
+	background: var(--ob-rule-soft); color: var(--ob-line); cursor: not-allowed;
 }
 @media (max-width: 620px) {
-	.ob-bar-hint { display: none; }
 	.ob-bar-actions { flex: 1; }
 	.ob-btn { flex: 1; }
 }
@@ -631,13 +690,14 @@ body.ob-page .modal-dialog { max-width: 470px; margin-top: 12vh; }
 body.ob-page .modal-content {
 	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius); overflow: hidden;
 	background: var(--ob-card); box-shadow: 0 10px 30px -12px rgba(31, 36, 46, .24);
+	letter-spacing: 0;
 }
 body.ob-page .modal-header {
 	padding: 18px 22px 12px; border-bottom: 1px solid var(--ob-rule-soft); align-items: flex-start;
 }
 body.ob-page .modal-title {
 	font-family: var(--ob-font);
-	font-size: 19px; font-weight: 700; letter-spacing: -.01em; color: var(--ob-ink); margin: 0;
+	font-size: 19px; font-weight: 700; color: var(--ob-ink); margin: 0;
 }
 body.ob-page .modal-header .close, body.ob-page .modal-header .btn-modal-close {
 	opacity: .4; padding: 4px; margin: -2px -4px 0 0; border-radius: 7px;
@@ -948,12 +1008,6 @@ frappe.ready(() => {
 
 	/* ---- repeating rows ---------------------------------------------------- */
 
-	const sync_rows_empty = (section) => {
-		const rows = $$(".ob-row", section).filter((r) => !r.closest("template"));
-		const empty = section.querySelector(".ob-rows-empty");
-		if (empty) empty.classList.toggle("is-hidden", rows.length > 0);
-	};
-
 	/* "Current employer" and "to date" are two answers to one question, and the server
 	   refuses a row that gives both. The Desk grid hides To Date via `depends_on`; this
 	   is the portal's equivalent, because depends_on is a Desk-only mechanism and the
@@ -989,7 +1043,6 @@ frappe.ready(() => {
 				const row = template.content.firstElementChild.cloneNode(true);
 				holder.appendChild(row);
 				bind_dates(row);
-				sync_rows_empty(section);
 				sync_current_employer(row);
 				refresh_state();
 				const first = row.querySelector("input:not([type=checkbox]), select, textarea");
@@ -1002,7 +1055,6 @@ frappe.ready(() => {
 			const btn = e.target.closest(".ob-row-remove");
 			if (!btn) return;
 			btn.closest(".ob-row").remove();
-			sync_rows_empty(section);
 			refresh_state();
 		});
 
@@ -1012,7 +1064,6 @@ frappe.ready(() => {
 			if (flag) sync_current_employer(flag.closest(".ob-row"));
 		});
 
-		sync_rows_empty(section);
 		sync_rows(section);
 	});
 
@@ -1038,7 +1089,7 @@ frappe.ready(() => {
 		call("portal_save", payload())
 			.then((r) => {
 				render_missing(r.message && r.message.missing);
-				frappe.show_alert({ message: __("Saved"), indicator: "green" });
+				frappe.show_alert({ message: __("Saved"), indicator: "blue" });
 			})
 			.always(() => busy(save, false));
 	});
