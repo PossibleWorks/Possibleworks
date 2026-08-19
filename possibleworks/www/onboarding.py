@@ -31,6 +31,10 @@ DEFAULT_ISD = "+91"
 def get_context(context):
 	context.no_cache = 1
 	context.show_sidebar = False
+	# base.html renders this onto <body>. The stylesheet paints the page ground through
+	# it, so setting it here rather than leaving it to the script means no white first
+	# paint. The script still adds it, harmlessly, for the dialog rules.
+	context.body_class = "ob-page"
 
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Please use the link from your onboarding email."), frappe.PermissionError)
@@ -316,13 +320,27 @@ def phone_countries() -> list[dict]:
 
 	countries = []
 	for name, info in (get_all() or {}).items():
-		isd = (info or {}).get("isd")
+		info = info or {}
+		isd = info.get("isd")
 		if not isd:
 			continue
-		countries.append({"name": name, "isd": isd})
+		countries.append({"name": name, "isd": isd, "flag": _flag(info.get("code"))})
 
 	countries.sort(key=lambda c: c["name"])
 	return countries
+
+
+def _flag(iso_code) -> str:
+	"""The flag emoji for an ISO 3166-1 alpha-2 code, or "" if there isn't one.
+
+	Two regional indicator symbols, which every current platform renders as a flag. Doing
+	it from the code means no image assets and nothing to keep in sync -- and an unknown
+	code degrades to the dialling code alone rather than a broken glyph.
+	"""
+	code = (iso_code or "").strip().upper()
+	if len(code) != 2 or not code.isalpha():
+		return ""
+	return "".join(chr(0x1F1E6 + ord(ch) - ord("A")) for ch in code)
 
 
 def default_isd_for(doc, countries) -> str:

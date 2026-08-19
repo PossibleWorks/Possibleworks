@@ -39,6 +39,26 @@ CONTEXT_KEYS = (
 	"tenure_text",
 )
 
+# Which engine renders these letters. wkhtmltopdf, because it is the one already
+# installed in every container of the deployed stack; Chromium is not in the image and
+# was only ever present in the web container as a runtime download, missing entirely
+# from the queue workers that render emailed letters.
+#
+# It is an old Qt-WebKit build with no flexbox and no viewport units, so the letterhead
+# sticks to block layout and absolute lengths -- a flex column with `min-height:100vh`
+# silently collapses there.
+#
+# Shared so the generated Print Formats and the download/email path cannot drift apart
+# and render the same letter through two different engines.
+PDF_GENERATOR = "wkhtmltopdf"
+
+# Where a letter shows up on the Employee form. Each value is one mount point
+# rendered by public/js/employee/employee_letters.js -- "Letters" is the general
+# tab, "Employee Exit" keeps the offboarding letters beside the relieving fields.
+# These must match the `placement` field's Select options.
+PLACEMENT_LETTERS = "Letters"
+PLACEMENT_EXIT = "Employee Exit"
+
 # Friendly descriptions for the computed helpers (used in the placeholder UI).
 CONTEXT_LABELS = {
 	"employee_id": "Employee ID",

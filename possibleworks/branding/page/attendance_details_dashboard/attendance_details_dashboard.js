@@ -1464,15 +1464,6 @@ function _mountDashboard(mount) {
 						</div>
 					`}
 
-					<!-- FOOTER NOTE -->
-					<div style=${{ marginTop:32, padding:"20px 24px", background:"#fff", borderRadius:14, border:"1px solid #e8e5df" }}>
-						<div style=${{ fontSize:13, fontWeight:700, marginBottom:8, fontFamily:"'Space Mono',monospace", color:"#1a1a2e" }}>Implementation Notes for Frappe</div>
-						<div style=${{ fontSize:12, color:"#6b7280", lineHeight:1.8 }}>
-							This dashboard maps to Frappe HR's Attendance DocType. Key fields: employee, attendance_date, status (Present/Absent/Half Day/On Leave), shift, department, branch.
-							Filters correspond to: Employee, Department, Branch, Shift Type, Designation (via Employee link), and Status.
-							For check-in/out data, the Employee Checkin DocType is used via in_time/out_time fields.
-						</div>
-					</div>
 
 				</div>`}
 

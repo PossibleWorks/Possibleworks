@@ -7,12 +7,18 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "applicant_tab",
-  "name_section",
-  "salutation",
+  "setup_tab",
+  "setup_section",
   "first_name",
   "middle_name",
   "last_name",
+  "cb_setup",
+  "personal_email",
+  "company",
+  "date_of_joining",
+  "applicant_tab",
+  "name_section",
+  "salutation",
   "applicant_name",
   "cb_name",
   "gender",
@@ -21,7 +27,6 @@
   "blood_group",
   "image",
   "contact_section",
-  "personal_email",
   "cell_number",
   "cb_contact",
   "identity_section",
@@ -72,8 +77,6 @@
   "documents",
   "hr_tab",
   "org_section",
-  "company",
-  "date_of_joining",
   "employee_number",
   "company_email",
   "cb_org",
@@ -113,6 +116,19 @@
  ],
  "fields": [
   {
+   "fieldname": "setup_tab",
+   "fieldtype": "Tab Break",
+   "label": "Onboarding Setup"
+  },
+  {
+   "fieldname": "setup_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "cb_setup",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "applicant_tab",
    "fieldtype": "Tab Break",
    "label": "Applicant Details"
@@ -146,6 +162,7 @@
   {
    "fieldname": "applicant_name",
    "fieldtype": "Data",
+   "hidden": 1,
    "in_global_search": 1,
    "in_list_view": 1,
    "label": "Applicant Name",
@@ -762,7 +779,7 @@
  "index_web_pages_for_search": 0,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-17 00:00:00.000000",
+ "modified": "2026-08-19 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Onboarding",
  "name": "Onboarding Applicant",

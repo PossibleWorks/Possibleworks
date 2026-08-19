@@ -11,15 +11,13 @@ from frappe.utils import validate_email_address
 from possibleworks.hr_documents.letters.utils import (
 	CONTEXT_KEYS,
 	CONTEXT_LABELS,
+	PDF_GENERATOR,
+	PLACEMENT_LETTERS,
 	ensure_letter_access,
 	get_employee_placeholder_fields,
 	get_letter_head,
 	resolve_letter,
 )
-
-# wkhtmltopdf is not available in this environment; use the Chrome generator
-# (same mechanism Frappe uses for Salary Slip and other standard letters).
-PDF_GENERATOR = "chrome"
 
 
 def _pdf_filename(label, doc):
@@ -69,6 +67,7 @@ def list_letter_templates(employee=None):
 			"template_name",
 			"description",
 			"icon",
+			"placement",
 			"requires_relieving_date",
 			"is_default",
 		],
@@ -76,6 +75,9 @@ def list_letter_templates(employee=None):
 	)
 	for t in templates:
 		t["icon"] = t.get("icon") or "file-text"
+		# The form renders one group per placement; an unset value must still land
+		# somewhere visible rather than disappearing between the two mount points.
+		t["placement"] = t.get("placement") or PLACEMENT_LETTERS
 		t["available"] = (not t["requires_relieving_date"]) or relieved
 	return templates
 

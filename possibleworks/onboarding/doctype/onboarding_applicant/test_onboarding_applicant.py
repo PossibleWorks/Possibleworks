@@ -19,24 +19,35 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, getdate, today
 from frappe.utils.file_manager import save_file
 
+from possibleworks.observer.constants import (
+	DEFER_IMMEDIATE_SEND_FLAG,
+	IMMEDIATE_SEND_DOCTYPES,
+)
 from possibleworks.observer.observer import WorkflowEventObserver
-from possibleworks.onboarding import pending_fields
+from possibleworks.onboarding import boarding, pending_fields, provisioning
 from possibleworks.onboarding.api import (
 	attach_document,
 	get_applicant,
 	get_pending_fields,
+	retry_onboarding_setup,
 	save_applicant,
 	submit_applicant_section,
 )
 from possibleworks.onboarding.constants import (
 	APPLICANT_SUBMITTED,
 	AWAITING_APPLICANT,
+	BOARDING_DOCTYPE,
+	BOARDING_TEMPLATE_DOCTYPE,
 	CANCELLED,
+	DEFAULT_BOARDING_ACTIVITIES,
+	DEFAULT_BOARDING_TEMPLATE_TITLE,
 	DOCTYPE,
 	DOCUMENT_TEMPLATE_DOCTYPE,
 	HR_REVIEW,
 	ONBOARDED,
 	READY_TO_ONBOARD,
+	STANDARD_ROLE_PROFILE,
+	STANDARD_ROLE_PROFILE_ROLES,
 )
 from possibleworks.onboarding.employee_fields import (
 	EMPLOYEE_FIELD_MAP,
@@ -153,6 +164,8 @@ class TestOnboardingApplicant(IntegrationTestCase):
 		cls.manager = frappe.db.get_value(
 			"Employee", {"status": "Active", "user_id": ("is", "set")}, "name"
 		)
+		# reqd on Job Offer, which submitting now creates.
+		cls.designation = frappe.db.get_value("Designation", {}, "name")
 
 	def setUp(self):
 		frappe.set_user("Administrator")
@@ -161,6 +174,44 @@ class TestOnboardingApplicant(IntegrationTestCase):
 		self._observer.start()
 		self.addCleanup(self._observer.stop)
 		self.template = make_template()
+		self.ensure_company_holiday_list()
+		# Created by the v1_5 patch on a real site; ensured here so the suite does not
+		# depend on migration order.
+		provisioning.ensure_standard_role_profile()
+
+	def ensure_company_holiday_list(self):
+		"""The submit gate needs a Holiday List to resolve for the company.
+
+		Created here rather than assumed, so the suite does not silently depend on one
+		row of this site's data. Rolled back with the rest of the test transaction.
+		"""
+		from hrms.utils.holiday_list import get_assigned_holiday_list
+
+		if get_assigned_holiday_list(self.company, today()):
+			return
+
+		# Must be a list that actually covers today: Holiday List Assignment refuses a
+		# start date outside its holiday list's own range.
+		holiday_list = frappe.db.get_value(
+			"Holiday List",
+			{"from_date": ("<=", today()), "to_date": (">=", today())},
+			["name", "from_date"],
+			as_dict=True,
+		)
+		if not holiday_list:
+			self.skipTest("no Holiday List on this site covers today")
+
+		assignment = frappe.get_doc(
+			{
+				"doctype": "Holiday List Assignment",
+				"applicable_for": "Company",
+				"assigned_to": self.company,
+				"holiday_list": holiday_list.name,
+				"from_date": holiday_list.from_date,
+			}
+		)
+		assignment.insert(ignore_permissions=True)
+		assignment.submit()
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
@@ -193,6 +244,10 @@ class TestOnboardingApplicant(IntegrationTestCase):
 			"salary_mode": "Cash",
 			"employee_number": f"TST-{frappe.generate_hash(length=8).upper()}",
 			"reports_to": self.manager,
+			# Both are submit-time gates now: the work email becomes the login, and
+			# Job Offer will not save without a designation.
+			"company_email": f"work{frappe.generate_hash(length=6)}@example.com",
+			"designation": self.designation,
 		}
 		values.update(overrides)
 		doc = self.make_applicant(**values)
@@ -1178,11 +1233,483 @@ class TestOnboardingApplicant(IntegrationTestCase):
 	# Decisions encoded as executable guards
 	# ------------------------------------------------------------------ #
 
-	def test_observer_skips_onboarding_applicant(self):
-		"""Decision: pull-only. If someone later adds this doctype to
-		ALWAYS_OBSERVED_DOCTYPES, this fails and forces the conversation."""
+	def test_hiring_chain_is_observed_immediately(self):
+		"""Reverses the earlier pull-only decision: the external app is now notified as
+		each step happens. It is notified, not fed -- see the payload test below."""
 		self._observer.stop()
 		try:
-			self.assertFalse(WorkflowEventObserver.should_process(DOCTYPE))
+			for doctype in (DOCTYPE, "Job Applicant", "Job Offer", BOARDING_DOCTYPE):
+				self.assertTrue(
+					WorkflowEventObserver.should_process(doctype), f"{doctype} must be observed"
+				)
+				self.assertIn(doctype, IMMEDIATE_SEND_DOCTYPES)
 		finally:
 			self._observer.start()
+
+	def test_onboarding_submit_defers_the_immediate_commit(self):
+		"""The commit in the immediate branch would strand the Job Applicant and Job
+		Offer behind an applicant that rolled back, so it must be suppressed while
+		on_submit is still building them."""
+		seen = []
+		# A plain function on the class: `process_event` is a staticmethod, so there is
+		# no bound-method wrapper to unwrap.
+		real = WorkflowEventObserver.process_event
+
+		def spy(doc, event_type):
+			if doc.doctype in ("Job Applicant", "Job Offer"):
+				seen.append(bool(frappe.flags.get(DEFER_IMMEDIATE_SEND_FLAG)))
+			return real(doc, event_type)
+
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch.object(WorkflowEventObserver, "process_event", staticmethod(spy)):
+			doc.submit()
+
+		self.assertTrue(seen, "no Job Applicant/Job Offer events were observed at all")
+		self.assertTrue(all(seen), "the defer flag was not set while the chain was built")
+
+	def test_defer_flag_is_cleared_even_when_submit_fails(self):
+		"""A flag left set would silently disable immediate delivery for the rest of
+		the request."""
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"possibleworks.onboarding.provisioning.create_employee_user",
+			side_effect=RuntimeError("boom"),
+		):
+			with self.assertRaises(RuntimeError):
+				doc.submit()
+
+		self.assertFalse(frappe.flags.get(DEFER_IMMEDIATE_SEND_FLAG))
+
+	def ensure_tenant_id(self, company):
+		"""Both payload builders return None without a tenant, and only one company on
+		this site happens to carry one. Supplied so the assertions actually run; rolled
+		back with the test."""
+		if not frappe.db.get_value("Company", company, "custom_tenant_id"):
+			frappe.db.set_value(
+				"Company", company, "custom_tenant_id", frappe.generate_hash(length=12)
+			)
+
+	def test_hiring_chain_payload_is_a_pointer_and_leaks_no_pii(self):
+		"""Decision: notify, do not feed. The applicant record holds Aadhaar, PAN,
+		passport and bank details; every payload is stored verbatim in Observer Event
+		Log with retention off by default, so the full document must never go out.
+		The receiver fetches through the scoped API instead."""
+		from possibleworks.observer.payload_builder import PayloadBuilder
+
+		aadhaar = valid_aadhaar("29876543210")
+		doc = self.submitted_applicant(
+			aadhar_number=aadhaar, bank_ac_no="9876543210", pan_number=VALID_PAN
+		)
+		job_applicant = frappe.db.get_value("Employee", doc.employee, "job_applicant")
+		self.ensure_tenant_id(doc.company)
+
+		records = {
+			DOCTYPE: doc.name,
+			"Job Applicant": job_applicant,
+			"Job Offer": frappe.db.get_value(
+				"Job Offer", {"job_applicant": job_applicant, "docstatus": 1}, "name"
+			),
+			BOARDING_DOCTYPE: frappe.db.get_value(
+				BOARDING_DOCTYPE, {"employee": doc.employee}, "name"
+			),
+		}
+
+		for doctype, name in records.items():
+			self.assertTrue(name, f"no {doctype} was created")
+			target = frappe.get_doc(doctype, name)
+			payload = PayloadBuilder.build_simple_payload(None, target, "on_submit")
+			self.assertIsNotNone(payload, f"{doctype} payload could not be built")
+
+			self.assertEqual(payload["document"]["doctype"], doctype)
+			self.assertEqual(payload["document"]["name"], name)
+			self.assertLessEqual(
+				len(payload["document"]), 5, f"{doctype} sent more than a pointer"
+			)
+
+			blob = frappe.as_json(payload)
+			for secret in (aadhaar, "9876543210", VALID_PAN):
+				self.assertNotIn(secret, blob, f"{doctype} payload leaked {secret}")
+
+	def test_pointer_carries_docstatus_alongside_status(self):
+		"""The pointer is deliberately not a summary. `boarding_status` and every other
+		field are one API call away given doctype + name, so putting them in the event
+		only duplicates state that can go stale between queueing and delivery."""
+		from possibleworks.observer.payload_builder import PayloadBuilder
+
+		doc = self.submitted_applicant()
+		self.ensure_tenant_id(doc.company)
+		onboarding = frappe.get_doc(
+			BOARDING_DOCTYPE, frappe.db.get_value(BOARDING_DOCTYPE, {"employee": doc.employee}, "name")
+		)
+
+		payload = PayloadBuilder.build_simple_payload(None, onboarding, "after_insert")
+		document = payload["document"]
+
+		self.assertEqual(document["doctype"], BOARDING_DOCTYPE)
+		self.assertEqual(document["name"], onboarding.name)
+		# `docstatus` was added alongside `status` rather than replacing it: existing
+		# consumers read `status`, and this payload is shared with every procurement
+		# doctype. Both are here because they answer different questions.
+		self.assertEqual(document["docstatus"], onboarding.docstatus)
+		self.assertIn("status", document)
+		# Employee Onboarding has no `status` field at all, which is exactly why
+		# docstatus is needed -- and `boarding_status` stays a fetch away.
+		self.assertIsNone(document["status"])
+		self.assertNotIn("boarding_status", document)
+
+	def test_job_applicant_can_resolve_a_company_for_its_payload(self):
+		"""Job Applicant ships with no company/department/employee, so without the
+		custom field every one of its events is dropped as unresolvable."""
+		from possibleworks.observer.payload_builder import PayloadBuilder
+
+		doc = self.submitted_applicant()
+		ja = frappe.get_doc("Job Applicant", frappe.db.get_value("Employee", doc.employee, "job_applicant"))
+
+		self.assertEqual(PayloadBuilder._resolve_company(ja), doc.company)
+
+	# ------------------------------------------------------------------ #
+	# Submit-time gates for the records created downstream
+	# ------------------------------------------------------------------ #
+
+	def test_work_email_is_not_required_to_save_a_draft(self):
+		"""The whole reason this is a gate and not `reqd`: HR seeds the record before
+		IT has provisioned a work email."""
+		doc = self.make_applicant()
+		self.assertFalse(doc.company_email)
+		self.assertEqual(doc.docstatus, 0)
+		self.assertFalse(frappe.get_meta(DOCTYPE).get_field("company_email").reqd)
+
+	def test_submit_blocked_without_a_work_email(self):
+		doc = self.satisfy_documents(self.make_ready_applicant(company_email=None))
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			doc.submit()
+		self.assertIn("Work Email", str(ctx.exception))
+		doc.reload()
+		self.assertEqual(doc.docstatus, 0)
+
+	def test_submit_blocked_when_work_email_matches_personal_email(self):
+		"""Reusing it would promote the applicant's portal login into a staff account."""
+		doc = self.make_ready_applicant()
+		doc.db_set("company_email", doc.personal_email, update_modified=False)
+		doc.reload()
+		self.satisfy_documents(doc)
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			doc.submit()
+		self.assertIn("Personal Email", str(ctx.exception))
+
+	def test_submit_blocked_when_a_user_already_owns_the_work_email(self):
+		"""Safe branch: we cannot tell a pre-provisioned account from a leaver's."""
+		email = f"taken{frappe.generate_hash(length=6)}@example.com"
+		user = frappe.get_doc(
+			{
+				"doctype": "User",
+				"email": email,
+				"first_name": "Already",
+				"send_welcome_email": 0,
+			}
+		)
+		user.insert(ignore_permissions=True)
+
+		doc = self.satisfy_documents(self.make_ready_applicant(company_email=email))
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			doc.submit()
+		self.assertIn(email, str(ctx.exception))
+
+	def test_submit_blocked_without_a_designation(self):
+		"""Job Offer has designation as reqd, so the chain cannot be built without it."""
+		doc = self.satisfy_documents(self.make_ready_applicant(designation=None))
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			doc.submit()
+		self.assertIn("Designation", str(ctx.exception))
+
+	def test_submit_blocked_when_no_holiday_list_resolves_for_the_company(self):
+		"""HRMS resolves holiday lists ONLY from Holiday List Assignment, so an empty
+		`Employee.holiday_list` is not what matters -- an unassigned company is."""
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"hrms.utils.holiday_list.get_assigned_holiday_list", return_value=None
+		):
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				doc.submit()
+		self.assertIn("Holiday List", str(ctx.exception))
+
+	# ------------------------------------------------------------------ #
+	# What submitting actually provisions
+	# ------------------------------------------------------------------ #
+
+	def submitted_applicant(self, **overrides):
+		doc = self.satisfy_documents(self.make_ready_applicant(**overrides))
+		doc.submit()
+		doc.reload()
+		return doc
+
+	def test_submit_creates_the_login_from_the_work_email(self):
+		doc = self.submitted_applicant()
+
+		user_id = frappe.db.get_value("Employee", doc.employee, "user_id")
+		self.assertEqual(user_id, doc.company_email)
+		self.assertTrue(frappe.db.get_value("User", user_id, "enabled"))
+
+	def test_submit_never_sends_a_welcome_email(self):
+		doc = self.submitted_applicant()
+		user_id = frappe.db.get_value("Employee", doc.employee, "user_id")
+		self.assertFalse(frappe.db.get_value("User", user_id, "send_welcome_email"))
+
+	def test_submit_assigns_the_standard_role_profile(self):
+		doc = self.submitted_applicant()
+		user_id = frappe.db.get_value("Employee", doc.employee, "user_id")
+
+		self.assertTrue(
+			frappe.db.exists(
+				"User Role Profile",
+				{"parent": user_id, "role_profile": STANDARD_ROLE_PROFILE},
+			)
+		)
+
+	def test_employee_role_survives_the_role_profile_prune(self):
+		"""`populate_role_profile_roles` drops any role no assigned profile grants, so
+		Employee has to be one of the profile's roles or `update_user()`'s append is
+		undone on the next save."""
+		doc = self.submitted_applicant()
+		user_id = frappe.db.get_value("Employee", doc.employee, "user_id")
+
+		user = frappe.get_doc("User", user_id)
+		user.save()  # the save that would strip it
+
+		roles = {row.role for row in frappe.get_doc("User", user_id).roles}
+		self.assertIn("Employee", roles)
+		for role in STANDARD_ROLE_PROFILE_ROLES:
+			self.assertIn(role, roles)
+
+	def test_submit_builds_the_recruitment_chain_the_checklist_needs(self):
+		doc = self.submitted_applicant()
+
+		job_applicant = frappe.db.get_value("Employee", doc.employee, "job_applicant")
+		self.assertTrue(job_applicant)
+		self.assertEqual(
+			frappe.db.get_value("Job Applicant", job_applicant, "status"), "Accepted"
+		)
+
+		offer = frappe.db.get_value(
+			"Job Offer", {"job_applicant": job_applicant}, ["name", "status", "docstatus"], as_dict=True
+		)
+		self.assertEqual(offer.status, "Accepted")
+		self.assertEqual(offer.docstatus, 1)
+
+	def test_a_full_staffing_plan_cannot_block_onboarding(self):
+		"""Vacancy control asks 'may we hire another?' -- this person already joined.
+
+		`validate_vacancies` re-reads HR Settings on every call, so the setting is
+		flipped in the database (rolled back with the test) rather than patched onto an
+		instance that the check would never look at.
+		"""
+		frappe.db.set_single_value("HR Settings", "check_vacancies", 1)
+		frappe.clear_document_cache("HR Settings")
+
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"hrms.hr.doctype.job_offer.job_offer.get_staffing_plan_detail",
+			return_value=frappe._dict({"parent": "SP-FULL", "vacancies": 0}),
+		):
+			# Sanity check first: the vacancy gate really is live right now, so the
+			# successful submit below is evidence of the bypass and not of a no-op.
+			stock = frappe.new_doc("Job Offer")
+			stock.designation = self.designation
+			stock.company = self.company
+			stock.offer_date = today()
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				stock.validate_vacancies()
+			self.assertIn("vacancies", str(ctx.exception))
+
+			doc.submit()
+
+		self.assertEqual(doc.docstatus, 1)
+		self.assertTrue(doc.employee)
+
+	def test_job_offer_keeps_every_other_validation(self):
+		"""Neutralising the vacancy check must not disable the rest of validate()."""
+		offer = frappe.new_doc("Job Offer")
+		offer.validate_vacancies = lambda: None
+		self.assertNotIn("validate_vacancies", offer.get_valid_dict())
+		# A second offer for one applicant is still refused by the duplicate guard.
+		doc = self.submitted_applicant()
+		job_applicant = frappe.db.get_value("Employee", doc.employee, "job_applicant")
+		with self.assertRaises(frappe.ValidationError):
+			boarding.create_job_offer(doc, job_applicant)
+
+	def test_submit_creates_a_draft_employee_onboarding_keyed_to_the_employee(self):
+		doc = self.submitted_applicant()
+
+		onboarding = frappe.db.get_value(
+			BOARDING_DOCTYPE,
+			{"employee": doc.employee},
+			["name", "docstatus", "boarding_begins_on", "date_of_joining"],
+			as_dict=True,
+		)
+		self.assertIsNotNone(onboarding, "the checklist must be findable by Employee")
+		self.assertEqual(onboarding.docstatus, 0, "it stays a draft for HR to review")
+		self.assertEqual(getdate(onboarding.boarding_begins_on), getdate(doc.date_of_joining))
+		self.assertEqual(getdate(onboarding.date_of_joining), getdate(doc.date_of_joining))
+
+	def test_checklist_activities_are_copied_not_just_linked(self):
+		"""Selecting a template only fills the table client-side, so a server-created
+		checklist with an empty `activities` would submit to a Project with no tasks."""
+		doc = self.submitted_applicant()
+		onboarding = frappe.get_doc(
+			BOARDING_DOCTYPE, {"employee": doc.employee, "docstatus": 0}
+		)
+
+		self.assertEqual(len(onboarding.activities), len(DEFAULT_BOARDING_ACTIVITIES))
+		self.assertEqual(
+			[row.activity_name for row in onboarding.activities],
+			[row["activity_name"] for row in DEFAULT_BOARDING_ACTIVITIES],
+		)
+
+	def test_checklist_activities_have_no_assignee_and_a_real_begin_on(self):
+		"""No owner is deliberate -- the admin decides per hire. But a blank `begin_on`
+		would produce a Task with no dates at all, so 0 is used, never None."""
+		doc = self.submitted_applicant()
+		onboarding = frappe.get_doc(
+			BOARDING_DOCTYPE, {"employee": doc.employee, "docstatus": 0}
+		)
+
+		for row in onboarding.activities:
+			self.assertFalse(row.user, f"{row.activity_name} should have no assignee")
+			self.assertFalse(row.role, f"{row.activity_name} should have no role")
+			self.assertIsNotNone(row.begin_on, f"{row.activity_name} needs a begin_on")
+
+	def test_default_template_is_created_once_and_reused(self):
+		first = boarding.ensure_default_boarding_template()
+		second = boarding.ensure_default_boarding_template()
+		self.assertEqual(first, second)
+		self.assertEqual(
+			frappe.db.count(
+				BOARDING_TEMPLATE_DOCTYPE, {"title": DEFAULT_BOARDING_TEMPLATE_TITLE}
+			),
+			1,
+		)
+
+	def test_two_hires_share_the_template_but_get_their_own_checklist(self):
+		first = self.submitted_applicant()
+		second = self.submitted_applicant()
+
+		self.assertEqual(
+			frappe.db.count(
+				BOARDING_TEMPLATE_DOCTYPE, {"title": DEFAULT_BOARDING_TEMPLATE_TITLE}
+			),
+			1,
+		)
+		self.assertNotEqual(
+			frappe.db.get_value(BOARDING_DOCTYPE, {"employee": first.employee}, "name"),
+			frappe.db.get_value(BOARDING_DOCTYPE, {"employee": second.employee}, "name"),
+		)
+
+	def test_a_repeat_email_gets_its_own_job_applicant(self):
+		"""Never reuse one: two Employees on one `job_applicant` would make
+		`set_employee()` ambiguous and would trip the one-per-applicant guards."""
+		email = f"repeat{frappe.generate_hash(length=6)}@example.com"
+		first = self.submitted_applicant(personal_email=email)
+
+		second_doc = self.make_ready_applicant(personal_email=email)
+		second_doc.db_set("personal_email", email, update_modified=False)
+		second = self.satisfy_documents(second_doc)
+		second.submit()
+		second.reload()
+
+		first_applicant = frappe.db.get_value("Employee", first.employee, "job_applicant")
+		second_applicant = frappe.db.get_value("Employee", second.employee, "job_applicant")
+		self.assertNotEqual(first_applicant, second_applicant)
+
+	# ------------------------------------------------------------------ #
+	# Post-commit steps: non-fatal, and repairable
+	# ------------------------------------------------------------------ #
+
+	def test_a_failed_checklist_does_not_undo_the_employee(self):
+		"""The Employee is committed by the Observer before this point, so throwing
+		would leave the record contradicting reality."""
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"possibleworks.onboarding.boarding.ensure_employee_onboarding",
+			side_effect=RuntimeError("boom"),
+		):
+			doc.submit()
+
+		doc.reload()
+		self.assertEqual(doc.docstatus, 1)
+		self.assertEqual(doc.status, ONBOARDED)
+		self.assertTrue(doc.employee)
+		self.assertFalse(frappe.db.exists(BOARDING_DOCTYPE, {"employee": doc.employee}))
+
+	def test_retry_finishes_what_the_failure_skipped(self):
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"possibleworks.onboarding.boarding.ensure_employee_onboarding",
+			side_effect=RuntimeError("boom"),
+		):
+			doc.submit()
+		doc.reload()
+
+		result = retry_onboarding_setup(doc.name)
+
+		self.assertTrue(result["employee_onboarding"])
+		self.assertTrue(result["role_profile_assigned"])
+		self.assertTrue(frappe.db.exists(BOARDING_DOCTYPE, {"employee": doc.employee}))
+
+	def test_retry_is_idempotent(self):
+		doc = self.submitted_applicant()
+
+		retry_onboarding_setup(doc.name)
+		retry_onboarding_setup(doc.name)
+
+		self.assertEqual(
+			frappe.db.count(BOARDING_DOCTYPE, {"employee": doc.employee, "docstatus": 0}), 1
+		)
+
+	def test_retry_refuses_when_no_employee_exists(self):
+		doc = self.make_applicant()
+		with self.assertRaises(frappe.ValidationError):
+			retry_onboarding_setup(doc.name)
+
+	# ------------------------------------------------------------------ #
+	# The Retry button only appears when it has something to do
+	# ------------------------------------------------------------------ #
+
+	def onload_pending_setup(self, doc):
+		doc.run_method("onload")
+		return (doc.get("__onload") or {}).get("pending_setup")
+
+	def test_no_retry_button_on_a_healthy_record(self):
+		"""A recovery action that is permanently on screen stops reading as one."""
+		doc = self.submitted_applicant()
+		self.assertEqual(self.onload_pending_setup(doc), [])
+
+	def test_retry_button_names_what_is_missing(self):
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"possibleworks.onboarding.boarding.ensure_employee_onboarding",
+			side_effect=RuntimeError("boom"),
+		):
+			doc.submit()
+		doc.reload()
+
+		self.assertEqual(self.onload_pending_setup(doc), ["onboarding checklist"])
+
+	def test_no_retry_button_before_submit(self):
+		"""Nothing has been provisioned yet, so there is nothing to retry."""
+		doc = self.make_applicant()
+		self.assertIsNone(self.onload_pending_setup(doc))
+
+	def test_retry_button_disappears_once_the_gap_is_closed(self):
+		doc = self.satisfy_documents(self.make_ready_applicant())
+		with patch(
+			"possibleworks.onboarding.boarding.ensure_employee_onboarding",
+			side_effect=RuntimeError("boom"),
+		):
+			doc.submit()
+		doc.reload()
+		self.assertTrue(self.onload_pending_setup(doc))
+
+		retry_onboarding_setup(doc.name)
+
+		doc.reload()
+		self.assertEqual(self.onload_pending_setup(doc), [])

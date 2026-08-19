@@ -7,6 +7,8 @@ Format via the doctype's on_update hook."""
 
 import frappe
 
+from possibleworks.hr_documents.letters.utils import PLACEMENT_EXIT, PLACEMENT_LETTERS
+
 SIGNATURE = (
 	"<br>\n"
 	'<p style="margin-bottom:48px;">For <strong>{{ company }}</strong>,</p>\n'
@@ -17,6 +19,7 @@ SIGNATURE = (
 DEFAULTS = [
 	{
 		"template_name": "Relieving Letter",
+		"placement": PLACEMENT_EXIT,
 		"letter_title": "RELIEVING LETTER",
 		"subtitle": "",
 		"description": "Issued when an employee leaves the organisation.",
@@ -39,6 +42,7 @@ DEFAULTS = [
 	},
 	{
 		"template_name": "Experience Letter",
+		"placement": PLACEMENT_EXIT,
 		"letter_title": "EXPERIENCE LETTER",
 		"subtitle": "TO WHOMSOEVER IT MAY CONCERN",
 		"description": "Certifies role, tenure and conduct.",
@@ -62,6 +66,7 @@ DEFAULTS = [
 	},
 	{
 		"template_name": "Service Certificate",
+		"placement": PLACEMENT_LETTERS,
 		"letter_title": "SERVICE CERTIFICATE",
 		"subtitle": "TO WHOMSOEVER IT MAY CONCERN",
 		"description": "Confirms continuous duration of service.",

@@ -9,6 +9,7 @@
   "section_break_details",
   "template_name",
   "enabled",
+  "placement",
   "requires_relieving_date",
   "is_default",
   "column_break_details",
@@ -41,6 +42,16 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Enabled"
+  },
+  {
+   "default": "Letters",
+   "description": "Where this letter appears on the Employee form. Exit letters sit with the relieving fields; everything else lives on the Letters tab.",
+   "fieldname": "placement",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Show Under",
+   "options": "Letters\nEmployee Exit",
+   "reqd": 1
   },
   {
    "default": "0",
@@ -97,7 +108,7 @@
    "fieldname": "placeholders_help",
    "fieldtype": "HTML",
    "label": "Placeholders",
-   "options": "<div class=\"text-muted\" style=\"font-size:12px;\">Use any Employee field as a placeholder, e.g. <code>{{ employee_name }}</code> or <code>{{ cell_number }}</code>, plus computed helpers like <code>{{ tenure_text }}</code>. Conditionals are supported, e.g. <code>{% if is_relieved %}…{% endif %}</code>.</div>"
+   "options": "<div class=\"text-muted\" style=\"font-size:12px;\">Use any Employee field as a placeholder, e.g. <code>{{ employee_name }}</code> or <code>{{ cell_number }}</code>, plus computed helpers like <code>{{ tenure_text }}</code>. Conditionals are supported, e.g. <code>{% if is_relieved %}\u2026{% endif %}</code>.</div>"
   },
   {
    "fieldname": "body",
@@ -140,5 +151,6 @@
  ],
  "sort_field": "creation",
  "sort_order": "DESC",
- "track_changes": 1
+ "track_changes": 1,
+ "modified": "2026-08-19 07:00:00.000000"
 }

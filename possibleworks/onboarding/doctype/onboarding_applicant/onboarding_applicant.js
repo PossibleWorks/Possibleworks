@@ -52,6 +52,7 @@ frappe.ui.form.on("Onboarding Applicant", {
 		toggle_employee_number(frm);
 		render_pending_fields(frm);
 		add_relink_button(frm);
+		add_retry_setup_button(frm);
 		add_resync_button(frm);
 		add_invite_button(frm);
 		render_document_checklist(frm);
@@ -181,10 +182,13 @@ function draw_panel(frm, wrapper, data) {
 	frm.pw_pending_dfs = [];
 
 	const has_work = data.native.length || data.blocking.length || data.manual.length;
-	frm.toggle_display(
-		"pending_fields_section",
-		Boolean(has_work || data.conditional.length || data.derived.length)
-	);
+	// Always visible on a saved record. This section holds BOTH the outstanding fields
+	// and the "you are done" confirmation below, so hiding it when the buckets drain
+	// removed the last visible control from the tab -- and Frappe drops a tab with no
+	// visible section out of the tab bar entirely (Tab.refresh, tab.js:57). HR watched
+	// the Pending Employee Fields tab vanish as they filled in the final field, which
+	// reads as lost data, and the success message was never reachable.
+	frm.toggle_display("pending_fields_section", true);
 
 	// The Captured Values grid is machine-managed and only ever holds rows for fields
 	// with no counterpart on this form. Showing it empty invites HR to type into it.
@@ -348,6 +352,66 @@ function add_relink_button(frm) {
 					});
 					frm.reload_doc();
 				}
+			},
+		});
+	}).addClass("btn-warning");
+}
+
+/**
+ * Finish the steps that run after the Employee is committed.
+ *
+ * `complete_post_employee_setup` swallows its failures on purpose -- the Employee is
+ * already committed by then, so throwing would roll this record back to draft behind a
+ * live Employee. That trade is only honest if there is a way to finish the job
+ * afterwards, and this is it.
+ *
+ * Shown ONLY when something is actually missing, which the server reports in
+ * `__onload.pending_setup`. A recovery button that sits there on every healthy record
+ * invites HR to press it and to wonder what went wrong -- so its presence is the
+ * signal, and the label says what it will fix.
+ */
+function add_retry_setup_button(frm) {
+	if (frm.doc.docstatus !== 1 || !frm.doc.employee) return;
+
+	const missing = (frm.doc.__onload || {}).pending_setup || [];
+	if (!missing.length) return;
+
+	frm.dashboard.add_comment(
+		__("Employee created, but the {0} is still missing.", [missing.join(__(" and "))]),
+		"orange",
+		true
+	);
+
+	frm.add_custom_button(__("Set Up {0}", [missing.join(__(" and "))]), function () {
+		frappe.call({
+			method: `${METHOD_PATH}.retry_onboarding_setup`,
+			args: { name: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Finishing onboarding setup..."),
+			callback: function (r) {
+				if (!r.message) return;
+
+				const done = [];
+				const missing = [];
+				(r.message.role_profile_assigned ? done : missing).push(__("role profile"));
+				(r.message.employee_onboarding ? done : missing).push(__("onboarding checklist"));
+
+				if (missing.length) {
+					frappe.msgprint({
+						title: __("Still Incomplete"),
+						indicator: "orange",
+						message: __("Could not set up: {0}. Check the Error Log for why.", [
+							missing.join(", "),
+						]),
+					});
+					return;
+				}
+
+				frappe.show_alert({
+					message: __("Onboarding setup complete: {0}", [done.join(", ")]),
+					indicator: "green",
+				});
+				frm.reload_doc();
 			},
 		});
 	}).addClass("btn-warning");

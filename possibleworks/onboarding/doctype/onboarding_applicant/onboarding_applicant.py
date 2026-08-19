@@ -15,12 +15,17 @@ here. Consequences, all handled below:
 
   * Every gate lives in `before_submit`, which runs before both the docstatus write
     and the insert.
-  * Nothing that can fail runs after `employee.insert()` except the `db_set` link write.
+  * Everything that can fail on a business rule -- the Job Applicant, the Job Offer,
+    the User -- is created BEFORE `employee.insert()`, where a rollback still undoes it.
   * `Employee.onboarding_applicant` is set BEFORE insert, so an orphan stays findable.
   * `on_submit` opens with a chain lookup and resumes rather than creating a second
     Employee.
-  * `relink_employee` in api.py repairs the partial state, since a docstatus=1 record
-    cannot be re-submitted.
+  * What genuinely cannot run before the Employee exists -- the role profile and the
+    onboarding checklist -- runs in `complete_post_employee_setup`, which swallows its
+    failures rather than rolling this record back behind a committed Employee. Both
+    steps are idempotent.
+  * `relink_employee` and `retry_onboarding_setup` in api.py repair the partial states,
+    since a docstatus=1 record cannot be re-submitted.
 """
 
 import frappe
@@ -29,7 +34,8 @@ from frappe.model import no_value_fields, table_fields
 from frappe.model.document import Document
 from frappe.utils import cint, flt, formatdate, get_link_to_form, getdate, today
 
-from possibleworks.onboarding import pending_fields, validators
+from possibleworks.observer.constants import DEFER_IMMEDIATE_SEND_FLAG
+from possibleworks.onboarding import boarding, pending_fields, provisioning, validators
 from possibleworks.onboarding.constants import (
 	APPLICANT_EDITABLE_STATUSES,
 	APPLICANT_SELF_MANAGED_FIELDS,
@@ -67,6 +73,27 @@ class OnboardingApplicant(Document):
 	# Lifecycle
 	# ------------------------------------------------------------------ #
 
+	def onload(self):
+		"""Tell the form whether the post-commit setup actually finished.
+
+		The Retry button is a recovery action, and one that is permanently on screen
+		stops looking like one -- HR reasonably asks what it is and whether they were
+		supposed to press it. So the form is told what, if anything, is missing, and
+		shows the button only then.
+
+		Two cheap `exists` lookups, and only for a submitted record.
+		"""
+		if self.docstatus != 1 or not self.employee:
+			return
+
+		missing = []
+		if provisioning.role_profile_missing(self.employee):
+			missing.append(_("role profile"))
+		if boarding.employee_onboarding_missing(self.employee):
+			missing.append(_("onboarding checklist"))
+
+		self.set_onload("pending_setup", missing)
+
 	def validate(self):
 		self.reset_state_on_amend()
 		self.set_applicant_name()
@@ -89,6 +116,12 @@ class OnboardingApplicant(Document):
 		self.validate_document_template_selected()
 		self.validate_required_documents()
 		self.validate_required_applicant_fields()
+		# Gates for the records built at submit: the login, the Job Offer, and the
+		# checklist's ability to schedule a task. All three are submit-time rather than
+		# `reqd` on the doctype -- HR seeds a draft before a work email exists.
+		provisioning.validate_work_email_available(self)
+		boarding.validate_designation_present(self)
+		boarding.validate_holiday_list_available(self)
 		self.validate_employee_number_for_naming()
 		self.validate_employee_mandatory_fields()
 
@@ -101,10 +134,39 @@ class OnboardingApplicant(Document):
 			self.db_set(
 				{"employee": existing, "status": ONBOARDED}, update_modified=False
 			)
+			self.complete_post_employee_setup(existing)
 			return
 
+		# --- Everything below, up to and including the insert, is one transaction. ---
+		# Ordered so that whatever can fail on a business rule fails while a rollback
+		# still means something. The Job Offer's duplicate guard, the work-email
+		# collision and the User's own validation all live in here.
+		#
+		# Job Applicant, Job Offer and Employee Onboarding are all in
+		# IMMEDIATE_SEND_DOCTYPES, and that branch commits. Committing here would defeat
+		# the ordering above: a failure at the User or Employee step would leave a
+		# stranded Job Applicant and a submitted Job Offer behind an applicant that
+		# rolled back to draft, and since a fresh Job Applicant is minted on every
+		# attempt, each retry would add another orphan pair. The flag routes those events
+		# through the batch path instead, which queues without committing.
+		frappe.flags[DEFER_IMMEDIATE_SEND_FLAG] = True
+		try:
+			job_applicant = boarding.create_job_applicant(self)
+			boarding.create_job_offer(self, job_applicant)
+			user = provisioning.create_employee_user(self)
+		finally:
+			frappe.flags[DEFER_IMMEDIATE_SEND_FLAG] = False
+
 		employee = self.build_employee_record()
+		# Both set before insert. `user_id` is what makes `Employee.on_update` append
+		# the Employee role and create the User Permissions; `job_applicant` is what
+		# ties the Employee into the boarding chain.
+		employee.user_id = user
+		if frappe.get_meta(EMPLOYEE_DOCTYPE).has_field("job_applicant"):
+			employee.job_applicant = job_applicant
+
 		employee.insert(ignore_permissions=True)
+		# ==================== the Observer commits here ====================
 
 		self.db_set(
 			# Killing the invite here is deliberate: once onboarded there is nothing
@@ -113,11 +175,43 @@ class OnboardingApplicant(Document):
 			update_modified=False,
 		)
 
+		self.complete_post_employee_setup(employee.name)
+
 		frappe.msgprint(
 			_("Employee {0} created.").format(get_link_to_form(EMPLOYEE_DOCTYPE, employee.name)),
 			alert=True,
 			indicator="green",
 		)
+
+	def complete_post_employee_setup(self, employee: str) -> None:
+		"""The steps that necessarily run after the Observer's commit.
+
+		Non-fatal, deliberately. The Employee is committed by the time we get here, so
+		the person IS onboarded; throwing would roll this record back to draft while
+		the Employee stands, leaving the record asserting something false. A missing
+		role profile or checklist is recoverable -- an applicant that disagrees with
+		its own Employee is not.
+
+		Both steps are idempotent, so `retry_onboarding_setup` (api.py) converges.
+		"""
+		self._run_post_step(provisioning.assign_standard_role_profile, employee, _("role profile"))
+		self._run_post_step(boarding.ensure_employee_onboarding, employee, _("onboarding checklist"))
+
+	def _run_post_step(self, step, employee: str, label: str) -> None:
+		try:
+			step(self, employee)
+		except Exception:
+			frappe.log_error(
+				f"Onboarding post-setup failed ({label}): {self.name}",
+				frappe.get_traceback(),
+			)
+			frappe.msgprint(
+				_(
+					"Employee was created, but the {0} could not be set up. Use Retry Onboarding Setup on this record once the cause is fixed."
+				).format(label),
+				title=_("Follow-up Needed"),
+				indicator="orange",
+			)
 
 	def on_cancel(self):
 		# check_if_doc_is_linked only raises for linked docs that are themselves
