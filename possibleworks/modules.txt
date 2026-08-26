@@ -3,3 +3,4 @@ AP Invoice Processing
 Observer
 HR Documents
 Onboarding
+Finance

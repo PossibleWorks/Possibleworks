@@ -140,7 +140,10 @@ scheduler_events = {
 # Then commit fixtures/custom_field.json. Other sites get them via bench migrate.
 # hooks.py
 
-fixture_doctypes_with_custom_fields = ["Leave Type", "Leave Application", "Payroll Period" , "Employee","Shift Location"]
+fixture_doctypes_with_custom_fields = [
+	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
+	"Material Request", "Material Request Item",
+]
 
 fixtures = [
     # Your existing custom fields
@@ -161,5 +164,19 @@ fixtures = [
             "Possibleworks Settings",
             "Shift Location Zone"
         ]]],
+    },
+    # Custom Print Formats + their Letter Head branding
+    {
+        "doctype": "Print Format",
+        "filters": [["name", "in", [
+            "GVS Material Requisition",
+            "GVS Supplier Quotation",
+            "GVS Purchase Order",
+            "GVS Purchase Invoice",
+        ]]],
+    },
+    {
+        "doctype": "Letter Head",
+        "filters": [["name", "in", ["Ganges Valley School"]]],
     },
 ]
