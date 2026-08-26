@@ -35,6 +35,7 @@ jinja = {
 	"methods": [
 		"possibleworks.hr_documents.letters.utils.get_letter_context",
 		"possibleworks.hr_documents.letters.utils.get_employee_tenure_text",
+		"possibleworks.utils.print_assets.get_file_as_data_uri",
 	],
 }
 # NOTE: do NOT list a doctype here when the .js already lives in that doctype's own
