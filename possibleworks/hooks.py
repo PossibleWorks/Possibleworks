@@ -143,7 +143,7 @@ scheduler_events = {
 
 fixture_doctypes_with_custom_fields = [
 	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
-	"Material Request", "Material Request Item", "Company",
+	"Material Request", "Material Request Item", "Company", "Item",
 ]
 
 fixtures = [
