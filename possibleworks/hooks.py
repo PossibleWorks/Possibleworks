@@ -109,6 +109,7 @@ doc_events = {
 
 override_doctype_class = {
 	"Shift Type": "possibleworks.shift_type.PossibleWorksShiftType",
+	"Request for Quotation": "possibleworks.overrides.request_for_quotation.CustomRequestForQuotation",
 	"Compensatory Leave Request": "possibleworks.compensatory_leave_request.PossibleWorksCompensatoryLeaveRequest",
 	"AI Document Processor Settings": "possibleworks.ap_invoice_processing.doctype.ai_document_processor_settings.ai_document_processor_settings.AIDocumentProcessorSettings",
 	"AI Document Processor Supported DocType": "possibleworks.ap_invoice_processing.doctype.ai_document_processor_supported_doctype.ai_document_processor_supported_doctype.AIDocumentProcessorSupportedDocType",
@@ -144,6 +145,7 @@ scheduler_events = {
 fixture_doctypes_with_custom_fields = [
 	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
 	"Material Request", "Material Request Item", "Company", "Request for Quotation",
+	"Request for Quotation Supplier",
 ]
 
 fixtures = [
