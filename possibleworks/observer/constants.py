@@ -7,6 +7,8 @@ ALWAYS_OBSERVED_DOCTYPES = [
     "Attendance Request",
     "Compensatory Leave Request",
     "Employee",
+    "Request for Quotation",
+    "Supplier Quotation",
 ]
 
 # Always observed, always delivered immediately.
