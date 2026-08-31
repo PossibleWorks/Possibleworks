@@ -35,6 +35,7 @@ jinja = {
 	"methods": [
 		"possibleworks.hr_documents.letters.utils.get_letter_context",
 		"possibleworks.hr_documents.letters.utils.get_employee_tenure_text",
+		"possibleworks.utils.print_assets.get_file_as_data_uri",
 	],
 }
 # NOTE: do NOT list a doctype here when the .js already lives in that doctype's own
@@ -141,7 +142,11 @@ scheduler_events = {
 # Then commit fixtures/custom_field.json. Other sites get them via bench migrate.
 # hooks.py
 
-fixture_doctypes_with_custom_fields = ["Leave Type", "Leave Application", "Payroll Period" , "Employee","Shift Location", "Request for Quotation", "Request for Quotation Supplier"]
+fixture_doctypes_with_custom_fields = [
+	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
+	"Material Request", "Material Request Item", "Company", "Request for Quotation",
+	"Request for Quotation Supplier",
+]
 
 fixtures = [
     # Your existing custom fields
@@ -162,5 +167,19 @@ fixtures = [
             "Possibleworks Settings",
             "Shift Location Zone"
         ]]],
+    },
+    # Custom Print Formats + their Letter Head branding
+    {
+        "doctype": "Print Format",
+        "filters": [["name", "in", [
+            "GVS Material Requisition",
+            "GVS Supplier Quotation",
+            "GVS Purchase Order",
+            "GVS Purchase Invoice",
+        ]]],
+    },
+    {
+        "doctype": "Letter Head",
+        "filters": [["name", "in", ["Ganges Valley School"]]],
     },
 ]
