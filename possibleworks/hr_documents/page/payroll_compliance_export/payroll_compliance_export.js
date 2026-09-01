@@ -1,16 +1,18 @@
 /* Payroll Compliance Export – Possibleworks
-   PF (Provident Fund) export: pick a Company, then a Payroll Period scoped to
-   that Company, then a Month; map each statutory field to the Salary
-   Component that supplies it; preview, then download as CSV/Excel.
+   Pick a Company, then a Payroll Period scoped to that Company, then a
+   Month; each of the PF and ESCI sections below maps its own statutory
+   fields to the Salary Component that supplies them, previews, then
+   downloads as CSV/Excel.
 
    Mapping is intentionally NOT persisted — every visit starts blank and the
    value shown is exactly whatever component the user just picked, read
    straight off that employee's Salary Slip ("NA" if that component isn't on
    a given slip, or the field wasn't mapped). Nothing here is calculated.
 
-   Keep PF_FIELDS in sync with the Python-side field list in constants.py —
-   this is the only place the field/description/mapped metadata is
-   duplicated, and it only changes if the outsourced template itself changes.
+   Keep PF_FIELDS/ESCI_FIELDS in sync with the Python-side field lists in
+   constants.py — this is the only place the field/description/mapped
+   metadata is duplicated, and it only changes if the outsourced templates
+   themselves change.
 */
 
 frappe.provide("possibleworks.hr_documents");
@@ -29,7 +31,33 @@ const PF_FIELDS = [
 	{ fieldname: "Refund", description: __("Refund of a PF advance adjusted in this period, if any."), mapped: true },
 ];
 
+const ESCI_FIELDS = [
+	{ fieldname: "IP Number", description: __("Employee's ESIC Insured Person (IP) number."), mapped: false },
+	{ fieldname: "IP Name", description: __("Employee's name as on the payslip."), mapped: false },
+	{ fieldname: "No of Days", description: __("Days wages were paid/payable in the period, rounded up to a whole number."), mapped: false },
+	{ fieldname: "Total Monthly Wages", description: __("Total wages for ESI contribution purposes for the period."), mapped: true },
+	{ fieldname: "Reason Code", description: __("Not used for this export — always left blank."), mapped: false },
+	{ fieldname: "Last Working Day", description: __("Not used for this export — always left blank."), mapped: false },
+];
+
 const METHOD_PATH = "possibleworks.hr_documents.page.payroll_compliance_export.payroll_compliance_export";
+
+const EXPORTS = [
+	{
+		key: "pf",
+		title: __("PF Export"),
+		fields: PF_FIELDS,
+		previewMethod: `${METHOD_PATH}.preview_pf_export`,
+		downloadMethod: `${METHOD_PATH}.download_pf_export`,
+	},
+	{
+		key: "esci",
+		title: __("ESCI Export"),
+		fields: ESCI_FIELDS,
+		previewMethod: `${METHOD_PATH}.preview_esci_export`,
+		downloadMethod: `${METHOD_PATH}.download_esci_export`,
+	},
+];
 
 frappe.pages["payroll-compliance-export"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
@@ -44,12 +72,11 @@ frappe.pages["payroll-compliance-export"].on_page_load = function (wrapper) {
 possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExport {
 	constructor(page) {
 		this.page = page;
-		this.mapping_controls = {};
+		this.mapping_controls = {}; // { pf: {fieldname: control}, esci: {...} }
 		this.periods_by_value = {};
 
 		this.setup_filters();
-		this.setup_field_table();
-		this.setup_actions();
+		EXPORTS.forEach((exportConfig) => this.setup_export_section(exportConfig));
 	}
 
 	setup_filters() {
@@ -107,7 +134,7 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 		this.month_field.df.options = [];
 		this.month_field.set_input("");
 		this.month_field.refresh();
-		this.hide_preview();
+		this.hide_all_previews();
 
 		if (!payroll_period) return;
 
@@ -132,29 +159,36 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 		});
 	}
 
-	setup_field_table() {
-		this.page.body.append(`
-			<div class="pf-export-tool" style="margin-top: 15px;">
+	setup_export_section(exportConfig) {
+		this.mapping_controls[exportConfig.key] = {};
+
+		const $section = $(`
+			<div class="pf-export-tool" style="margin-top: 25px;">
+				<h4>${frappe.utils.escape_html(exportConfig.title)}</h4>
 				<table class="table table-bordered">
 					<thead>
 						<tr>
-							<th style="width: 15%">${__("PF Template Field")}</th>
+							<th style="width: 15%">${__("Field")}</th>
 							<th style="width: 45%">${__("Description")}</th>
 							<th style="width: 40%">${__("Maps To")}</th>
 						</tr>
 					</thead>
 					<tbody class="pf-field-rows"></tbody>
 				</table>
-				<div class="pf-preview-section" style="display: none; margin-top: 20px;">
+				<div class="pf-export-actions" style="margin: 10px 0 20px;">
+					<button class="btn btn-default btn-sm pf-preview-btn">${__("Preview")}</button>
+					<button class="btn btn-primary btn-sm pf-download-btn" style="margin-left: 6px;">${__("Download")}</button>
+				</div>
+				<div class="pf-preview-section" style="display: none; margin-bottom: 10px;">
 					<h5>${__("Preview")}</h5>
 					<div class="pf-preview-table-wrapper" style="overflow-x: auto;"></div>
 				</div>
 			</div>
-		`);
+		`).appendTo(this.page.body);
 
-		const $rows = this.page.body.find(".pf-field-rows");
+		const $rows = $section.find(".pf-field-rows");
 
-		PF_FIELDS.forEach((field) => {
+		exportConfig.fields.forEach((field) => {
 			const $tr = $(`
 				<tr>
 					<td><strong>${frappe.utils.escape_html(field.fieldname)}</strong></td>
@@ -186,19 +220,20 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 			control.refresh();
 			if (!control.$input) control.make_input();
 
-			this.mapping_controls[field.fieldname] = control;
+			this.mapping_controls[exportConfig.key][field.fieldname] = control;
 		});
+
+		$section.find(".pf-preview-btn").on("click", () => this.run(exportConfig, "preview", $section));
+		$section.find(".pf-download-btn").on("click", () => this.run(exportConfig, "download", $section));
+
+		exportConfig.$section = $section;
 	}
 
-	setup_actions() {
-		this.page.set_secondary_action(__("Preview"), () => this.run("preview"));
-		this.page.set_primary_action(__("Download"), () => this.run("download"));
-	}
-
-	get_mapping() {
+	get_mapping(exportKey) {
 		const mapping = {};
-		Object.keys(this.mapping_controls).forEach((fieldname) => {
-			mapping[fieldname] = this.mapping_controls[fieldname].get_value() || "";
+		const controls = this.mapping_controls[exportKey] || {};
+		Object.keys(controls).forEach((fieldname) => {
+			mapping[fieldname] = controls[fieldname].get_value() || "";
 		});
 		return mapping;
 	}
@@ -214,7 +249,7 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 		return { payroll_period, period: this.periods_by_value[month_key] };
 	}
 
-	run(action) {
+	run(exportConfig, action, $section) {
 		const selection = this.validate_selection();
 		if (!selection) return;
 
@@ -222,35 +257,35 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 			payroll_period: selection.payroll_period,
 			start_date: selection.period.start_date,
 			end_date: selection.period.end_date,
-			mapping: JSON.stringify(this.get_mapping()),
+			mapping: JSON.stringify(this.get_mapping(exportConfig.key)),
 		};
 
 		if (action === "preview") {
 			frappe.call({
-				method: `${METHOD_PATH}.preview_pf_export`,
+				method: exportConfig.previewMethod,
 				args,
 				freeze: true,
-				callback: (r) => this.render_preview(r.message),
+				callback: (r) => this.render_preview($section, r.message),
 			});
 			return;
 		}
 
 		args.file_format = this.format_field.get_value();
 		open_url_post(frappe.request.url, {
-			cmd: `${METHOD_PATH}.download_pf_export`,
+			cmd: exportConfig.downloadMethod,
 			...args,
 		});
 	}
 
-	render_preview(result) {
-		const $section = this.page.body.find(".pf-preview-section");
-		const $wrapper = this.page.body.find(".pf-preview-table-wrapper");
+	render_preview($section, result) {
+		const $preview = $section.find(".pf-preview-section");
+		const $wrapper = $section.find(".pf-preview-table-wrapper");
 		const columns = (result && result.columns) || [];
 		const rows = (result && result.rows) || [];
 
 		if (!rows.length) {
 			$wrapper.html(`<p class="text-muted">${__("No submitted Salary Slips found for this period.")}</p>`);
-			$section.show();
+			$preview.show();
 			return;
 		}
 
@@ -270,10 +305,12 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 		html += "</tbody></table>";
 
 		$wrapper.html(html);
-		$section.show();
+		$preview.show();
 	}
 
-	hide_preview() {
-		this.page.body.find(".pf-preview-section").hide();
+	hide_all_previews() {
+		EXPORTS.forEach((exportConfig) => {
+			if (exportConfig.$section) exportConfig.$section.find(".pf-preview-section").hide();
+		});
 	}
 };

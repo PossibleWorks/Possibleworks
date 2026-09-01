@@ -52,11 +52,45 @@ PF_FIELD_DESCRIPTIONS = {
 
 # Fields whose value is read directly off Employee/Salary Slip — never mapped
 # by the user, never looked up in Salary Detail.
-FIXED_FIELDS = ["UAN Number", "Employee Name", "Gross Salary", "LOP Days"]
+PF_FIXED_FIELDS = ["UAN Number", "Employee Name", "Gross Salary", "LOP Days"]
 
 # Fields the user maps to a Salary Component on the export page.
-MAPPED_FIELDS = ["EPF Wages", "EPS Wages", "EDLI Wages", "EPF", "EPS", "ERPF", "Refund"]
+PF_MAPPED_FIELDS = ["EPF Wages", "EPS Wages", "EDLI Wages", "EPF", "EPS", "ERPF", "Refund"]
 
 # Safety cap on how many period rows get_period_months() will ever return,
 # in case a Payroll Period document has a malformed/huge date range.
 MAX_PERIOD_MONTHS = 60
+
+
+# =============================================================================
+# ESCI (ESIC monthly contribution) export
+#
+# Column order/labels match the real ESIC "Sample MC Excel Template" exactly:
+# IP Number, IP Name, No of Days, Total Monthly Wages, Reason Code, Last
+# Working Day. Per the user: Reason Code and Last Working Day are explicitly
+# out of scope for this export — always left blank, no employee-status-based
+# exit logic. Only "Total Monthly Wages" is mapped to a Salary Component; the
+# rest are fixed, same split style as the PF export above.
+# =============================================================================
+
+ESCI_COLUMNS = [
+	"IP Number",
+	"IP Name",
+	"No of Days",
+	"Total Monthly Wages",
+	"Reason Code",
+	"Last Working Day",
+]
+
+ESCI_FIELD_DESCRIPTIONS = {
+	"IP Number": "Employee's ESIC Insured Person (IP) number.",
+	"IP Name": "Employee's name as on the payslip.",
+	"No of Days": "Days wages were paid/payable in the period, rounded up to a whole number.",
+	"Total Monthly Wages": "Total wages for ESI contribution purposes for the period.",
+	"Reason Code": "Not used for this export — always left blank.",
+	"Last Working Day": "Not used for this export — always left blank.",
+}
+
+ESCI_FIXED_FIELDS = ["IP Number", "IP Name", "No of Days", "Reason Code", "Last Working Day"]
+
+ESCI_MAPPED_FIELDS = ["Total Monthly Wages"]
