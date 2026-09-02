@@ -23,6 +23,7 @@ A Server Script calls it once at the end of its run:
              "leaves": "", "error": "Leave Type not found"},
         ],
         errors=["No active leave period for company"],   # run-level only
+        recipients=["hr@example.com", "ops@example.com"],  # required
         dry_run=0,
     )
 
@@ -39,29 +40,22 @@ a real list of dicts rather than a serialised string.
 
 RECIPIENTS
 ----------
-The calling script passes its own `recipients` list. Because a whitelisted
-method is reachable over HTTP by any logged-in session, this is gated two ways:
+The calling script passes its own `recipients` list. There is no default and
+no site-config fallback: a report goes only where the caller says it should.
+With no usable address the report is skipped, not sent somewhere arbitrary.
+
+Because a whitelisted method is reachable over HTTP by any logged-in session,
+the call is gated two ways:
 
   1. _is_permitted() -- only Administrator or a System Manager / HR Manager /
      HR User may trigger a report at all. Anyone else is refused silently.
   2. _resolve_recipients() -- addresses are validated, de-duplicated and capped
      at MAX_RECIPIENTS, so the call cannot be turned into a bulk mailer.
-
-With no `recipients` passed, it falls back to `script_report_recipients` in
-site_config.json, then to DEFAULT_RECIPIENTS.
 """
 
 import io
 
 import frappe
-
-# Fallback recipients. Override per site with a `script_report_recipients` list
-# in site_config.json, e.g.
-#   "script_report_recipients": ["hr@example.com", "ops@example.com"]
-DEFAULT_RECIPIENTS = [
-    "yaswanth@hashiraworks.com",
-    "charan@hashiraworks.com",
-]
 
 # Roles permitted to trigger a report. The scheduler runs as Administrator, so
 # scheduled scripts always pass. A non-privileged caller does not raise -- the
@@ -103,10 +97,9 @@ def send_run_report(
 		summary:     dict of counter name -> value.
 		rows:        list of dicts, one per affected record. Keys become columns.
 		errors:      list of strings (or dicts) describing per-record failures.
-		recipients:  list of email addresses. Validated, de-duplicated and
-		             capped at MAX_RECIPIENTS. Falls back to
-		             site_config `script_report_recipients`, then
-		             DEFAULT_RECIPIENTS, when not supplied.
+		recipients:  required list of email addresses. Validated, de-duplicated
+		             and capped at MAX_RECIPIENTS. There is no default -- with
+		             none supplied the report is skipped.
 		dry_run:     truthy marks the subject and body as a dry run.
 		attach_xlsx: truthy attaches the full row set as .xlsx.
 
@@ -130,7 +123,7 @@ def send_run_report(
 
 		if not recipients:
 			frappe.logger().warning(
-				f"script_reporter: no recipients configured, skipping report for '{script_name}'"
+				f"script_reporter: no valid recipients passed, skipping report for '{script_name}'"
 			)
 			return {"sent": False, "reason": "no recipients"}
 
@@ -201,22 +194,15 @@ def _is_permitted():
 
 
 def _resolve_recipients(supplied=None):
-	"""Caller-supplied first, then site config, then module default.
+	"""Caller-supplied addresses only -- there is no fallback list.
 
-	Whatever the source, the list is validated, de-duplicated and capped so this
-	whitelisted method cannot be used as a bulk mailer.
+	The list is validated, de-duplicated and capped so this whitelisted method
+	cannot be used as a bulk mailer. An empty result means the caller passed
+	nothing usable, and send_run_report skips the report.
 	"""
-	candidates = _as_list(supplied)
-
-	if not candidates:
-		configured = frappe.conf.get("script_report_recipients")
-
-		if isinstance(configured, str):
-			configured = [configured]
-
-		candidates = configured if configured else DEFAULT_RECIPIENTS
-
 	valid = []
+
+	candidates = _as_list(supplied)
 
 	for address in candidates:
 		address = str(address or "").strip()
