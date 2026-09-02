@@ -94,6 +94,7 @@ doc_events = {
 		"on_cancel": "possibleworks.leave_application.reconstruct_attendance_on_leave_cancel",
 	},
 	"Employee": {
+		"validate": "possibleworks.employee.block_status_change_with_active_reports",
 		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
 	},
     "*": {
