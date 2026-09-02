@@ -49,6 +49,14 @@ const MAPPING_HINT = __(
 	"Pick the Salary Component each amount is read from."
 );
 
+// How many preview rows are on screen at once. The preview is a spot-check
+// before downloading, not the export itself — a 1000-employee period would
+// otherwise put 1000 rows in the DOM in a container that doesn't scroll, and
+// the page becomes unusable. The full result is still fetched (the row total
+// is worth knowing, and `build_*_rows` has to compute every row regardless),
+// so paging is instant and never re-queries.
+const PREVIEW_PAGE_SIZE = 20;
+
 const EXPORTS = [
 	{
 		key: "pf",
@@ -80,11 +88,15 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 	constructor(page) {
 		this.page = page;
 		this.mapping_controls = {}; // { pf: {fieldname: control}, esci: {...} }
+		this.preview_state = {}; // { pf: {columns, rows, page}, esci: {...} }
 		this.periods_by_value = {};
 
 		this.inject_styles();
 		this.setup_filters();
-		EXPORTS.forEach((exportConfig) => this.setup_export_section(exportConfig));
+		EXPORTS.forEach((exportConfig, index) => {
+			if (index > 0) this.add_section_divider();
+			this.setup_export_section(exportConfig);
+		});
 	}
 
 	inject_styles() {
@@ -122,6 +134,23 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 				border: 1px solid var(--border-color);
 				border-radius: var(--border-radius-md);
 			}
+			/* PF and ESCI are independent exports with their own mapping and
+			   their own Download — not two halves of one form. Whitespace alone
+			   stopped reading as a boundary once the PF preview was open, so
+			   there is an explicit rule between them. Two details make it read
+			   as a page-level break rather than a third card border:
+			     - full bleed (no horizontal margin), so it runs past both card
+			       edges instead of lining up with them;
+			     - 2px against the cards' 1px, so the weight differs too.
+			   Crowd a 1px inset rule between the two cards instead and you just
+			   get three parallel hairlines. */
+			.pce-section-divider {
+				margin: var(--margin-xl) 0;
+				border: 0;
+				border-top: 2px solid var(--dark-border-color);
+			}
+			.pce-section-divider + .pce-card { margin-top: 0; }
+			.pce-card:last-child { margin-bottom: var(--margin-xl); }
 
 			.pce-card__header {
 				padding: 14px var(--pce-gutter);
@@ -264,6 +293,20 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 				font-weight: var(--weight-medium);
 				color: var(--text-muted);
 			}
+
+			.pce-preview__pager {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 12px;
+				margin-top: 10px;
+			}
+			.pce-preview__range {
+				font-size: var(--text-sm);
+				color: var(--text-muted);
+			}
+			.pce-preview__nav { display: flex; gap: 8px; }
+			.pce-preview__nav .btn { margin: 0; }
 		</style>`).appendTo("head");
 	}
 
@@ -349,6 +392,13 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 		});
 	}
 
+	/** A thematic break between two export sections — an <hr> rather than a
+	 *  pseudo-element so it lives in the gap between the cards instead of
+	 *  inside one of them, and reads as a break to a screen reader too. */
+	add_section_divider() {
+		$('<hr class="pce-section-divider">').appendTo(this.page.body);
+	}
+
 	setup_export_section(exportConfig) {
 		this.mapping_controls[exportConfig.key] = {};
 
@@ -377,6 +427,13 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 				<div class="pce-preview" style="display: none;">
 					<h3 class="pce-preview__title">${__("Preview")}</h3>
 					<div class="pce-preview__body"></div>
+					<div class="pce-preview__pager" style="display: none;">
+						<span class="pce-preview__range"></span>
+						<div class="pce-preview__nav">
+							<button type="button" class="btn btn-default btn-xs pce-preview__prev">${__("Previous")}</button>
+							<button type="button" class="btn btn-default btn-xs pce-preview__next">${__("Next")}</button>
+						</div>
+					</div>
 				</div>
 			</div>
 		`).appendTo(this.page.body);
@@ -420,6 +477,8 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 
 		$section.find(".pce-preview-btn").on("click", () => this.run(exportConfig, "preview", $section));
 		$section.find(".pce-download-btn").on("click", () => this.run(exportConfig, "download", $section));
+		$section.find(".pce-preview__prev").on("click", () => this.step_preview(exportConfig, -1));
+		$section.find(".pce-preview__next").on("click", () => this.step_preview(exportConfig, 1));
 
 		exportConfig.$section = $section;
 	}
@@ -460,7 +519,7 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 				method: exportConfig.previewMethod,
 				args,
 				freeze: true,
-				callback: (r) => this.render_preview($section, r.message),
+				callback: (r) => this.set_preview(exportConfig, r.message),
 			});
 			return;
 		}
@@ -472,12 +531,19 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 		});
 	}
 
-	render_preview($section, result) {
+	/** Take a fresh preview result, reset to the first page and build the
+	 *  table shell. Paging afterwards only swaps <tbody>, so the horizontal
+	 *  scroll position of a wide export survives a page change. */
+	set_preview(exportConfig, result) {
+		const $section = exportConfig.$section;
 		const $preview = $section.find(".pce-preview");
 		const $title = $section.find(".pce-preview__title");
 		const $body = $section.find(".pce-preview__body");
+		const $pager = $section.find(".pce-preview__pager");
+
 		const columns = (result && result.columns) || [];
 		const rows = (result && result.rows) || [];
+		this.preview_state[exportConfig.key] = { columns, rows, page: 0 };
 
 		$title.html(__("Preview"));
 
@@ -485,38 +551,99 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 			$body.html(
 				`<p class="pce-preview__empty">${__("No submitted Salary Slips found for this period.")}</p>`
 			);
+			$pager.hide();
 			$preview.show();
 			return;
 		}
 
-		// Row count belongs next to the heading, not buried under the table —
-		// it's the first thing you check before trusting the export. Both forms
-		// are separate strings so translators get a real singular, not "1 rows".
-		const count = rows.length === 1 ? __("1 row") : __("{0} rows", [rows.length]);
-		$title.append(` <span class="pce-preview__count">· ${count}</span>`);
+		// Total (not page) count belongs next to the heading — it's the first
+		// thing you check before trusting the export. Both forms are separate
+		// strings so translators get a real singular, not "1 rows".
+		const total =
+			rows.length === 1 ? __("1 row") : __("{0} rows", [format_number(rows.length, null, 0)]);
+		$title.append(` <span class="pce-preview__count">· ${total}</span>`);
 
-		let html = '<div class="pce-preview__scroll"><table class="pce-preview-table"><thead><tr>';
-		columns.forEach((column) => {
-			html += `<th>${frappe.utils.escape_html(column)}</th>`;
-		});
-		html += "</tr></thead><tbody>";
-		rows.forEach((row) => {
-			html += "<tr>";
-			columns.forEach((column) => {
-				const value = row[column];
-				html += `<td>${value === undefined || value === null ? "" : frappe.utils.escape_html(String(value))}</td>`;
-			});
-			html += "</tr>";
-		});
-		html += "</tbody></table></div>";
+		const head = columns
+			.map((column) => `<th>${frappe.utils.escape_html(column)}</th>`)
+			.join("");
+		$body.html(
+			`<div class="pce-preview__scroll">
+				<table class="pce-preview-table">
+					<thead><tr>${head}</tr></thead>
+					<tbody></tbody>
+				</table>
+			</div>`
+		);
 
-		$body.html(html);
+		this.render_preview_page(exportConfig);
 		$preview.show();
+	}
+
+	/** Move the visible page by `delta`, clamped to the available range. */
+	step_preview(exportConfig, delta) {
+		const state = this.preview_state[exportConfig.key];
+		if (!state || !state.rows.length) return;
+
+		const last_page = Math.ceil(state.rows.length / PREVIEW_PAGE_SIZE) - 1;
+		const next = Math.min(Math.max(state.page + delta, 0), last_page);
+		if (next === state.page) return;
+
+		state.page = next;
+		this.render_preview_page(exportConfig);
+	}
+
+	render_preview_page(exportConfig) {
+		const $section = exportConfig.$section;
+		const state = this.preview_state[exportConfig.key];
+		if (!state || !state.rows.length) return;
+
+		const { columns, rows } = state;
+		const last_page = Math.ceil(rows.length / PREVIEW_PAGE_SIZE) - 1;
+		// Clamp defensively: a caller could have set `page` past the end.
+		state.page = Math.min(Math.max(state.page, 0), last_page);
+
+		const start = state.page * PREVIEW_PAGE_SIZE;
+		const end = Math.min(start + PREVIEW_PAGE_SIZE, rows.length);
+
+		const body = rows
+			.slice(start, end)
+			.map(
+				(row) =>
+					`<tr>${columns
+						.map((column) => {
+							const value = row[column];
+							const text =
+								value === undefined || value === null ? "" : String(value);
+							return `<td>${frappe.utils.escape_html(text)}</td>`;
+						})
+						.join("")}</tr>`
+			)
+			.join("");
+		$section.find(".pce-preview-table tbody").html(body);
+
+		// Keep the pager's contents in step with what is on screen even when it
+		// is hidden, so it can never come back showing a previous result's range.
+		$section.find(".pce-preview__range").text(
+			__("Showing {0}–{1} of {2}", [
+				format_number(start + 1, null, 0),
+				format_number(end, null, 0),
+				format_number(rows.length, null, 0),
+			])
+		);
+		$section.find(".pce-preview__prev").prop("disabled", state.page === 0);
+		$section.find(".pce-preview__next").prop("disabled", state.page === last_page);
+
+		// A single page needs no controls at all — a dead pager under six rows
+		// is noise.
+		$section.find(".pce-preview__pager").toggle(last_page > 0);
 	}
 
 	hide_all_previews() {
 		EXPORTS.forEach((exportConfig) => {
 			if (exportConfig.$section) exportConfig.$section.find(".pce-preview").hide();
+			// Drop the rows too — they belong to the period that was just
+			// replaced, so paging them after a filter change would page stale data.
+			delete this.preview_state[exportConfig.key];
 		});
 	}
 };
