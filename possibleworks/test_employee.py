@@ -348,10 +348,14 @@ class TestEmployeeStatusReassignment(IntegrationTestCase):
 		frappe.set_user("Guest")
 		self.assertRaises(frappe.PermissionError, get_active_direct_reports, manager.name)
 
-	def test_disabled_flag_blocks_the_feature_entirely(self):
+	def test_disabled_flag_restores_plain_erpnext_behaviour(self):
 		"""With Policy Configuration.enable_manager_status_reassignment off, a site sees no
-		trace of this feature: get_active_direct_reports returns nothing (so the client
-		script's dialog never opens) and change_status_with_reassignment refuses outright."""
+		trace of this feature at all: get_active_direct_reports returns nothing (so the
+		client script's dialog never opens), change_status_with_reassignment refuses
+		outright, and -- since block_status_change_with_active_reports is gated by the
+		same flag -- a plain status save on an Employee with active reports now goes
+		through untouched, exactly like vanilla erpnext (which never validated this for
+		Inactive/Suspended; only "Left" carries any such check out of the box)."""
 		frappe.db.set_value(
 			"Policy Configuration", "Policy Configuration", "enable_manager_status_reassignment", 0
 		)
@@ -362,7 +366,7 @@ class TestEmployeeStatusReassignment(IntegrationTestCase):
 		)
 
 		manager = self._new_manager()
-		self._new_employee(reports_to=manager.name)
+		report = self._new_employee(reports_to=manager.name)
 
 		self.assertEqual(get_active_direct_reports(manager.name), [])
 		self.assertRaises(
@@ -372,3 +376,12 @@ class TestEmployeeStatusReassignment(IntegrationTestCase):
 			new_status="Inactive",
 			new_manager=self.new_manager_name,
 		)
+
+		# A plain save (what actually happens once the dialog doesn't open) is no longer
+		# blocked.
+		manager_doc = frappe.get_doc("Employee", manager.name)
+		manager_doc.status = "Inactive"
+		manager_doc.save()
+
+		self.assertEqual(frappe.db.get_value("Employee", manager.name, "status"), "Inactive")
+		self.assertEqual(frappe.db.get_value("Employee", report.name, "reports_to"), manager.name)
