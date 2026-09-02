@@ -3,9 +3,12 @@
 
 // When an Employee's status is changed to Left/Inactive/Suspended while they still have
 // Active direct reports, the save is normally hard-blocked -- erpnext's own
-// Employee.validate_status for Left, and possibleworks.employee.block_status_change_with_active_reports
-// for Inactive/Suspended. Both stay untouched: they remain the safety net for anything that
-// bypasses this script (bulk edit from the list view, API scripts, integrations).
+// Employee.validate_status for Left (unconditional, core behaviour), and
+// possibleworks.employee.block_status_change_with_active_reports for Inactive/Suspended
+// (gated by Policy Configuration.enable_manager_status_reassignment, same as this feature --
+// see get_active_direct_reports for what a disabled site falls back to). Neither is modified
+// here: they remain the safety net for anything that bypasses this script (bulk edit from the
+// list view, API scripts, integrations).
 //
 // This intercepts the status change on the form itself, before Save is even clicked, and
 // offers to reassign the affected reports to another Active manager in the same request as

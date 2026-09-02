@@ -3,7 +3,19 @@ from frappe import _
 from frappe.utils import get_link_to_form, today
 
 
+def _manager_reassignment_enabled():
+    # Same Policy Configuration gate as sync_leave_approver_and_reports_to. Defaults to
+    # enabled, but stays a per-site switch: disabling it turns off both the hard block
+    # below and the reassignment dialog, returning Inactive/Suspended status changes to
+    # plain erpnext behaviour (only "Left" carries any such validation out of the box).
+    policy = frappe.get_single("Policy Configuration")
+    return bool(policy.get("enable_manager_status_reassignment"))
+
+
 def block_status_change_with_active_reports(doc, method):
+    if not _manager_reassignment_enabled():
+        return
+
     if doc.status not in ("Inactive", "Suspended"):
         return
 
@@ -30,14 +42,6 @@ def block_status_change_with_active_reports(doc, method):
 STATUSES_REQUIRING_MANAGER_REASSIGNMENT = ("Left", "Inactive", "Suspended")
 
 
-def _manager_reassignment_enabled():
-    # Same Policy Configuration gate as sync_leave_approver_and_reports_to. Defaults to
-    # enabled, but stays a per-site switch so a site can opt out if it doesn't want this
-    # dialog changing real reporting-line data.
-    policy = frappe.get_single("Policy Configuration")
-    return bool(policy.get("enable_manager_status_reassignment"))
-
-
 def _get_active_direct_reports(employee):
     return frappe.get_all(
         "Employee",
@@ -51,9 +55,9 @@ def get_active_direct_reports(employee):
     """Active employees directly reporting to `employee`, for the status-change reassignment dialog.
 
     Returns an empty list when the feature is disabled, rather than throwing: the client script
-    treats an empty list as "nothing to reassign" and lets the save proceed normally, so a
-    disabled site sees exactly the pre-existing behaviour (the plain hard block on save) with
-    no dialog ever appearing.
+    treats an empty list as "nothing to reassign" and lets the save proceed normally. With the
+    feature disabled, block_status_change_with_active_reports is also a no-op, so that save goes
+    through untouched -- a disabled site sees plain erpnext behaviour for Inactive/Suspended.
     """
     frappe.has_permission("Employee", "write", doc=employee, throw=True)
     if not _manager_reassignment_enabled():
