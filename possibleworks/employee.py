@@ -27,6 +27,115 @@ def block_status_change_with_active_reports(doc, method):
     frappe.throw(message, title=_("Cannot Change Employee Status"))
 
 
+STATUSES_REQUIRING_MANAGER_REASSIGNMENT = ("Left", "Inactive", "Suspended")
+
+
+def _manager_reassignment_enabled():
+    # Same Policy Configuration gate as sync_leave_approver_and_reports_to. Defaults to
+    # enabled, but stays a per-site switch so a site can opt out if it doesn't want this
+    # dialog changing real reporting-line data.
+    policy = frappe.get_single("Policy Configuration")
+    return bool(policy.get("enable_manager_status_reassignment"))
+
+
+def _get_active_direct_reports(employee):
+    return frappe.get_all(
+        "Employee",
+        filters={"reports_to": employee, "status": "Active"},
+        fields=["name", "employee_name"],
+    )
+
+
+@frappe.whitelist()
+def get_active_direct_reports(employee):
+    """Active employees directly reporting to `employee`, for the status-change reassignment dialog.
+
+    Returns an empty list when the feature is disabled, rather than throwing: the client script
+    treats an empty list as "nothing to reassign" and lets the save proceed normally, so a
+    disabled site sees exactly the pre-existing behaviour (the plain hard block on save) with
+    no dialog ever appearing.
+    """
+    frappe.has_permission("Employee", "write", doc=employee, throw=True)
+    if not _manager_reassignment_enabled():
+        return []
+    return _get_active_direct_reports(employee)
+
+
+@frappe.whitelist()
+def change_status_with_reassignment(employee, new_status, new_manager, relieving_date=None):
+    """Reassign `employee`'s active direct reports to `new_manager`, then apply the status change.
+
+    Both steps run in this one whitelisted call, so a failure at either stage rolls back the
+    other -- frappe's own request handler rolls back the whole DB transaction when a
+    whitelisted call raises (frappe/app.py), so Employee is never left in a state where the
+    status changed but reports were not reassigned, or vice versa, for any real API caller.
+    """
+    frappe.has_permission("Employee", "write", doc=employee, throw=True)
+
+    if not _manager_reassignment_enabled():
+        frappe.throw(_("Manager status reassignment is not enabled for this site."))
+
+    if new_status not in STATUSES_REQUIRING_MANAGER_REASSIGNMENT:
+        frappe.throw(_("{0} is not a status that requires reassigning reports.").format(new_status))
+
+    if not new_manager:
+        frappe.throw(_("Please select a manager to reassign the reports to."))
+
+    if new_manager == employee:
+        frappe.throw(_("Cannot reassign reports to the employee whose status is changing."))
+
+    new_manager_status, new_manager_user_id = frappe.db.get_value(
+        "Employee", new_manager, ["status", "user_id"]
+    ) or (None, None)
+
+    if new_manager_status is None:
+        frappe.throw(_("Employee {0} does not exist.").format(new_manager))
+    if new_manager_status != "Active":
+        frappe.throw(
+            _("{0} is not an Active employee and cannot be assigned as a manager.").format(new_manager)
+        )
+    if not new_manager_user_id:
+        frappe.throw(
+            _("{0} does not have a user account assigned and cannot be a Leave Approver.").format(
+                new_manager
+            )
+        )
+
+    # Re-fetch live rather than trusting a list the client saw earlier -- someone else may have
+    # added a new direct report between the dialog opening and this call.
+    active_reports = _get_active_direct_reports(employee)
+
+    # `new_manager` being one of these reports (promoting a peer to take over the team)
+    # can't be handled by just excluding them from the loop below: they'd keep reporting
+    # to `employee`, which is itself still an active direct report as far as
+    # block_status_change_with_active_reports is concerned -- so the status save a few
+    # lines down would immediately hit that same hard block this feature exists to avoid.
+    # Moving them to report to someone else first is a separate action for HR to take.
+    if new_manager in [report.name for report in active_reports]:
+        frappe.throw(
+            _("{0} currently reports to {1} and can't be the new manager for their team.").format(
+                new_manager, employee
+            )
+        )
+
+    for report in active_reports:
+        report_doc = frappe.get_doc("Employee", report.name)
+        report_doc.reports_to = new_manager
+        report_doc.leave_approver = new_manager_user_id
+        report_doc.save()
+
+    employee_doc = frappe.get_doc("Employee", employee)
+    employee_doc.status = new_status
+    if new_status == "Left" and relieving_date:
+        employee_doc.relieving_date = relieving_date
+    employee_doc.save()
+
+    return {
+        "reassigned": [report.name for report in active_reports],
+        "new_status": new_status,
+    }
+
+
 def sync_leave_approver_and_reports_to(doc, method):
     # Gate: only run if Policy Configuration flag is enabled
     policy = frappe.get_single("Policy Configuration")
