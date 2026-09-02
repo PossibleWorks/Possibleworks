@@ -1,5 +1,30 @@
 import frappe
-from frappe.utils import today
+from frappe import _
+from frappe.utils import get_link_to_form, today
+
+
+def block_status_change_with_active_reports(doc, method):
+    if doc.status not in ("Inactive", "Suspended"):
+        return
+
+    active_reports = frappe.get_all(
+        "Employee",
+        filters={"reports_to": doc.name, "status": "Active"},
+        fields=["name", "employee_name"],
+    )
+    if not active_reports:
+        return
+
+    link_to_employees = [
+        get_link_to_form("Employee", employee.name, label=employee.employee_name)
+        for employee in active_reports
+    ]
+    message = _("The following employees are currently still reporting to {0}:").format(
+        frappe.bold(doc.employee_name)
+    )
+    message += "<br><br><ul><li>" + "</li><li>".join(link_to_employees) + "</li></ul><br>"
+    message += _("Please make sure the employees above report to another Active employee.")
+    frappe.throw(message, title=_("Cannot Change Employee Status"))
 
 
 def sync_leave_approver_and_reports_to(doc, method):
