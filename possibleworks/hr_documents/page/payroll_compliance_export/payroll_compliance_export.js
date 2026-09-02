@@ -75,8 +75,28 @@ possibleworks.hr_documents.PayrollComplianceExport = class PayrollComplianceExpo
 		this.mapping_controls = {}; // { pf: {fieldname: control}, esci: {...} }
 		this.periods_by_value = {};
 
+		this.inject_styles();
 		this.setup_filters();
 		EXPORTS.forEach((exportConfig) => this.setup_export_section(exportConfig));
+	}
+
+	inject_styles() {
+		// A mounted frappe.ui.form control brings its own .form-group /
+		// .frappe-control spacing, sized for a full form (label + input +
+		// description). Inside a plain table cell that leaves a large gap
+		// under "Select a Salary Component" rows compared to the plain-text
+		// "Auto-filled" rows next to them — strip that back down to fit a
+		// table row instead of a form row.
+		if ($("#pf-export-tool-styles").length) return;
+		$(`<style id="pf-export-tool-styles">
+			.pf-export-tool td { vertical-align: middle; padding: 10px 12px; }
+			.pf-export-tool .pf-maps-to .frappe-control,
+			.pf-export-tool .pf-maps-to .form-group { margin-bottom: 0; }
+			.pf-export-tool .pf-maps-to .control-input-wrapper,
+			.pf-export-tool .pf-maps-to .control-input { margin: 0; padding: 0; }
+			.pf-export-tool .pf-maps-to .help-box,
+			.pf-export-tool .pf-maps-to small.text-muted { display: none; }
+		</style>`).appendTo("head");
 	}
 
 	setup_filters() {
