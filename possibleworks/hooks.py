@@ -15,12 +15,23 @@ app_include_css = [
     "/assets/possibleworks/css/whitelabel.css",
     "/assets/possibleworks/css/ap_invoice.css"
 ]
-app_include_js = ["/assets/possibleworks/js/whitelabel.js"]
+app_include_js = [
+    "/assets/possibleworks/js/whitelabel.js",
+    # Shared by the three buying form scripts below; see the file header for why it is
+    # here rather than copied into each one.
+    "/assets/possibleworks/js/purchase_indent/buying_picker.js",
+]
 
 doctype_js = {
 	"Purchase Invoice": "public/js/ap_invoice/purchase_invoice_ai_form.js",
 	"Purchase Receipt": "public/js/ap_invoice/ai_document_form.js",
-	"Supplier Quotation": "public/js/ap_invoice/ai_document_form.js",
+	# Two scripts: the AP-invoice AI form, plus the Purchase Indent picker swap. A second
+	# "Supplier Quotation" key would silently replace this one (duplicate dict key), so
+	# they share it as a list.
+	"Supplier Quotation": [
+		"public/js/ap_invoice/ai_document_form.js",
+		"public/js/purchase_indent/supplier_quotation_form.js",
+	],
 	"Payment Entry": "public/js/ap_invoice/ai_document_form.js",
 	"Sales Order": "public/js/ap_invoice/ai_document_form.js",
 	"Quotation": "public/js/ap_invoice/ai_document_form.js",
@@ -28,6 +39,13 @@ doctype_js = {
 	"AI Document Queue": "ap_invoice_processing/doctype/ai_document_queue/ai_document_queue.js",
 	"AI Document Processor Settings": "ap_invoice_processing/doctype/ai_document_processor_settings/ai_document_processor_settings.js",
 	"Employee": "public/js/employee/employee_letters.js",
+	# Route the buying flow through Purchase Indent: MR -> PI -> PO / RFQ / SQ. Each of
+	# these swaps erpnext's direct "Material Request" picker for a Purchase Indent one.
+	# Stock Entry keeps its Material Request picker on purpose -- transfer and issue
+	# requests are not buying documents and never pass through an indent.
+	"Material Request": "public/js/purchase_indent/material_request_form.js",
+	"Purchase Order": "public/js/purchase_indent/purchase_order_form.js",
+	"Request for Quotation": "public/js/purchase_indent/request_for_quotation_form.js",
 }
 
 # Jinja methods exposed to print formats / templates (Employee letters)
@@ -95,6 +113,15 @@ doc_events = {
 	},
 	"Employee": {
 		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
+	},
+	# Keeps a Purchase Indent's ordered_qty / % Ordered / status current. erpnext drives
+	# Material Request the same way, but through Purchase Order's own `status_updater`
+	# list, which cannot be extended from another app without overriding the class.
+	# `on_update_after_submit` is needed too: PO's "Update Items" edits qty in place.
+	"Purchase Order": {
+		"on_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
+		"on_cancel": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
+		"on_update_after_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 	},
     "*": {
         "after_insert": "possibleworks.observer.observer.handle_workflow_event",
