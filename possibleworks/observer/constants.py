@@ -45,6 +45,16 @@ IMMEDIATE_SEND_DOCTYPES = [
     "Job Applicant",
     "Job Offer",
     "Employee Onboarding",
+    # Exit chain. Created as a draft by `offboarding.api.create_employee_separation`
+    # when a manager approves a resignation in PossibleWorks, and submitted later by
+    # the pw-cron-jobs-v2 scheduler -- it is that submit the receiver acts on, which
+    # is when the Project and Tasks exist and the tiles can be addressed.
+    #
+    # Safe to list here without DEFER_IMMEDIATE_SEND_FLAG: unlike the hiring chain,
+    # this record is created standalone by an API call, not inside another document's
+    # on_submit, so the commit in the immediate branch has no in-flight transaction to
+    # strand. That stops being true the day its creation moves inside one.
+    "Employee Separation",
 ]
 
 # When this flag is set on frappe.flags, the immediate branch does NOT commit; the event

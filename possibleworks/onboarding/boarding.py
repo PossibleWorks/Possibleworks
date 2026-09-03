@@ -20,6 +20,7 @@ import frappe
 from frappe import _
 from frappe.utils import today
 
+from possibleworks.boarding_activities import copy_template_activities
 from possibleworks.onboarding.constants import (
 	BOARDING_DOCTYPE,
 	BOARDING_TEMPLATE_DOCTYPE,
@@ -29,19 +30,6 @@ from possibleworks.onboarding.constants import (
 	JOB_APPLICANT_DOCTYPE,
 	JOB_OFFER_ACCEPTED,
 	JOB_OFFER_DOCTYPE,
-)
-
-# Copied verbatim from the template's rows into the checklist's rows. `task` is
-# excluded -- it is written back by the controller when the Task is created.
-ACTIVITY_FIELDS = (
-	"activity_name",
-	"description",
-	"user",
-	"role",
-	"begin_on",
-	"duration",
-	"task_weight",
-	"required_for_employee_creation",
 )
 
 
@@ -216,31 +204,12 @@ def ensure_employee_onboarding(applicant, employee: str) -> str:
 
 	template = ensure_default_boarding_template()
 	doc.employee_onboarding_template = template
-	_copy_template_activities(template, doc)
+	copy_template_activities(template, BOARDING_TEMPLATE_DOCTYPE, doc)
 
 	doc.flags.ignore_permissions = True
 	doc.insert(ignore_permissions=True)
 
 	return doc.name
-
-
-def _copy_template_activities(template: str, doc) -> None:
-	"""Copy the template's rows in.
-
-	Necessary because selecting a template only fills the table CLIENT-side, in
-	`employee_onboarding.js` via `get_onboarding_details`. Setting
-	`employee_onboarding_template` from Python leaves `activities` empty, and an empty
-	checklist submits to a Project with no tasks at all.
-	"""
-	rows = frappe.get_all(
-		"Employee Boarding Activity",
-		filters={"parent": template, "parenttype": BOARDING_TEMPLATE_DOCTYPE},
-		fields=list(ACTIVITY_FIELDS),
-		order_by="idx",
-	)
-
-	for row in rows:
-		doc.append("activities", row)
 
 
 def employee_onboarding_missing(employee: str) -> bool:

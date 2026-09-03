@@ -15,3 +15,5 @@ possibleworks.patches.v1_5.add_job_applicant_company_field
 possibleworks.patches.v1_5.create_employee_letters_tab
 possibleworks.patches.v1_5.seed_visa_letter_template
 possibleworks.patches.v1_5.disable_assignment_emails
+possibleworks.patches.v1_6.create_employee_exit_coordinator_role
+possibleworks.patches.v1_6.add_employee_separation_source_field
