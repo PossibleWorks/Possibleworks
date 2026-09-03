@@ -21,6 +21,11 @@ ALWAYS_OBSERVED_DOCTYPES = [
 # that flow needs DEFER_IMMEDIATE_SEND_FLAG (below) or its atomicity is broken.
 IMMEDIATE_SEND_DOCTYPES = [
     "Material Request",
+    # Safe to list despite the commit warning above: nothing creates a Purchase Indent
+    # inside another document's on_submit. It is raised by a user, or mapped from a
+    # Material Request by `make_purchase_indent`, which hands an unsaved doc back to the
+    # client to save as its own request -- so there is no enclosing transaction to strand.
+    "Purchase Indent",
     "Request for Quotation",
     "Supplier Quotation",
     "Purchase Order",
