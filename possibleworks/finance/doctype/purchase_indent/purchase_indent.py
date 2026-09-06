@@ -46,6 +46,7 @@ class PurchaseIndent(Document):
 		self.set_defaults_on_items()
 		self.validate_items()
 		self.validate_schedule_dates()
+		self.set_total()
 		self.set_status()
 
 	def on_cancel(self):
@@ -99,6 +100,16 @@ class PurchaseIndent(Document):
 
 			row.stock_qty = flt(row.qty) * flt(row.conversion_factor)
 			row.amount = flt(row.qty) * flt(row.rate)
+
+	def set_total(self):
+		"""Roll the item rows' `amount` up to the header.
+
+		The rows keep their own rate and amount -- this is purely the aggregate, and it
+		exists because an approval threshold is a decision about the whole indent, and a
+		Frappe Workflow transition condition can read a parent field but cannot sum a
+		child table. Runs after `validate_items`, which is what sets each row's amount.
+		"""
+		self.total = sum(flt(row.amount) for row in self.items)
 
 	def validate_schedule_dates(self):
 		"""Nothing may be required before the indent that asks for it was raised."""
@@ -233,7 +244,9 @@ def make_purchase_indent(source_name, target_doc=None, args=None):
 	several requests accumulate into one indent instead of replacing each other.
 
 	`args["filtered_children"]` is populated only when the picker was used to tick
-	individual item rows instead of whole requests.
+	individual item rows instead of whole requests. `args["qty_overrides"]` maps a
+	Material Request Item name to the quantity to indent for it -- the Stores Manager
+	card sends the shortage there, so the indent covers only what stock cannot.
 
 	The picker already hides ineligible requests; this repeats the check because the
 	picker is a convenience and this is the authority -- the method is whitelisted, so a
@@ -254,13 +267,36 @@ def make_purchase_indent(source_name, target_doc=None, args=None):
 
 	args = frappe.parse_json(args) if args else {}
 	filtered_children = args.get("filtered_children") or []
+	qty_overrides = args.get("qty_overrides") or {}
 
 	def select_item(source_row):
+		# An override of zero means stock covers the line in full, so there is nothing
+		# to indent and the row is dropped rather than mapped at qty 0.
+		if source_row.name in qty_overrides and flt(qty_overrides[source_row.name]) <= 0:
+			return False
 		# Empty means whole requests were ticked, so every row maps. Non-empty means
 		# the user drilled into the grid, and only what they chose may come through.
 		return source_row.name in filtered_children if filtered_children else True
 
+	def override_qty(source_row, target_row, source_parent):
+		if source_row.name not in qty_overrides:
+			return
+		target_row.qty = flt(qty_overrides[source_row.name])
+		target_row.stock_qty = target_row.qty * (flt(source_row.conversion_factor) or 1.0)
+
 	def postprocess(source, target):
+		# Only fires when nothing at all mapped -- accumulating a second request into an
+		# existing indent leaves the first request's rows in place, so a source that
+		# contributes nothing is a silent no-op rather than an error that would discard
+		# what is already there.
+		if not target.items:
+			frappe.throw(
+				_("There is nothing left to indent on {0}.").format(
+					get_link_to_form("Material Request", source.name)
+				),
+				title=_("Nothing to Indent"),
+			)
+
 		# `map_doc` copies each source row's idx verbatim, so pulling a second Material
 		# Request would otherwise hand the grid a table with duplicate idx values.
 		for position, row in enumerate(target.items, start=1):
@@ -289,6 +325,7 @@ def make_purchase_indent(source_name, target_doc=None, args=None):
 					"custom_area_of_application": "area_of_application",
 					"custom_additional_details": "additional_details",
 				},
+				"postprocess": override_qty,
 				"condition": select_item,
 			},
 		},

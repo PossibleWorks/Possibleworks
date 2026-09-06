@@ -28,6 +28,8 @@
   "set_warehouse",
   "items_section",
   "items",
+  "totals_section",
+  "total",
   "terms_tab",
   "terms_section_break",
   "tc_name",
@@ -157,6 +159,21 @@
    "oldfieldtype": "Table",
    "options": "Purchase Indent Item",
    "reqd": 1
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "bold": 1,
+   "fieldname": "total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total Value",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
   },
   {
    "default": "Today",

@@ -96,6 +96,17 @@ fld(pi["fields"], "naming_series")["options"] = "PUR-IND-.YYYY.-"
 fld(pi["fields"], "items")["options"] = "Purchase Indent Item"
 fld(pi["fields"], "amended_from")["options"] = "Purchase Indent"
 
+# Roll-up of the item rows' `amount`. Line detail already lives on the child table;
+# this exists because an approval threshold is a decision about the whole indent, and a
+# Frappe Workflow transition condition can read a parent field but cannot sum a child
+# table. Read-only -- `PurchaseIndent.validate` is the only writer.
+insert_after(pi, "items", [
+    {"fieldname": "totals_section", "fieldtype": "Section Break", "label": "Totals"},
+    {"fieldname": "total", "fieldtype": "Currency", "label": "Total Value",
+     "read_only": 1, "bold": 1, "in_list_view": 1, "no_copy": 1,
+     "options": "Company:company:default_currency"},
+])
+
 # Standard equivalents of the two Material Request custom fields on this bench.
 insert_after(pi, "company", [
     {"fieldname": "department", "fieldtype": "Link", "label": "Department", "options": "Department"},
@@ -123,9 +134,12 @@ insert_after(pii, "description", [
 ])
 
 # Back-links to the row this was pulled from, grouped with the other source-doc links.
+# `in_list_view` on the request: one indent can draw lines from several Material
+# Requests (the picker allows it), so the source belongs per row, visible in the grid,
+# rather than as a single field on the header that could only ever name one.
 insert_after(pii, "sales_order_item", [
     {"fieldname": "material_request", "fieldtype": "Link", "label": "Material Request",
-     "options": "Material Request", "read_only": 1, "search_index": 1},
+     "options": "Material Request", "read_only": 1, "search_index": 1, "in_list_view": 1},
     {"fieldname": "material_request_item", "fieldtype": "Data", "label": "Material Request Item",
      "read_only": 1, "hidden": 1},
 ])
