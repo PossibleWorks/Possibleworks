@@ -235,3 +235,245 @@ def make_material_issue(source_name, target_doc=None, args=None):
 		target_doc,
 		postprocess,
 	)
+
+
+# --------------------------------------------------------------------------- payment leg
+#
+# The chain a purchase actually travels is
+#   Material Request -> Purchase Indent -> Purchase Order -> Purchase Receipt
+#                    -> Purchase Invoice -> Payment Entry
+# and only at the end of it are the goods both in the store and paid for. The Stores
+# Manager is then the one who still owes the original requester their items, so the
+# Payment Entry is where the request finally closes -- by issuing what was asked for.
+#
+# The issue is mapped from the MATERIAL REQUEST, not from the payment: a Payment Entry
+# carries money, not items, and the request is the only document in the chain that knows
+# what is still outstanding. Reusing `make_material_issue` also means the quantities come
+# out of the same live-stock calculation the Stores Manager card uses, so the two can
+# never disagree.
+
+
+def _payment_reference_names(payment_entry, reference_doctype):
+	"""Names of one reference doctype on a Payment Entry, in row order."""
+	rows = frappe.get_all(
+		"Payment Entry Reference",
+		filters={"parent": payment_entry, "reference_doctype": reference_doctype},
+		fields=["reference_name"],
+		order_by="idx",
+	)
+	names = []
+	for row in rows:
+		if row["reference_name"] and row["reference_name"] not in names:
+			names.append(row["reference_name"])
+	return names
+
+
+def _child_links(child_doctype, parents, fieldname):
+	"""Distinct non-empty values of one field across several parents' child rows."""
+	if not parents:
+		return []
+	rows = frappe.get_all(
+		child_doctype,
+		filters={"parent": ["in", parents], fieldname: ["is", "set"]},
+		fields=[fieldname],
+		order_by="parent, idx",
+	)
+	values = []
+	for row in rows:
+		value = row[fieldname]
+		if value and value not in values:
+			values.append(value)
+	return values
+
+
+def _material_requests_behind_payment(payment_entry):
+	"""Walk a Payment Entry back to the Material Request(s) that started it.
+
+	Payment Entry -> Purchase Invoice -> Purchase Receipt -> Material Request, which is
+	all standard erpnext link fields. The Purchase Order route is tried as well because a
+	Purchase Invoice can be raised straight off the order with no receipt in between, and
+	from an order the request is reachable either directly (erpnext's own
+	`material_request` on the order line) or through our Purchase Indent.
+
+	Returns the receipts alongside the requests so a caller can fall back to what
+	physically arrived when no request is in the chain -- a Purchase Order raised on its
+	own, with nobody having requested anything.
+	"""
+	invoices = _payment_reference_names(payment_entry, "Purchase Invoice")
+	receipts = _child_links("Purchase Invoice Item", invoices, "purchase_receipt")
+	orders = _child_links("Purchase Invoice Item", invoices, "purchase_order")
+
+	requests = _child_links("Purchase Receipt Item", receipts, "material_request")
+	if not requests:
+		requests = _child_links("Purchase Order Item", orders, "material_request")
+	if not requests:
+		indents = _child_links("Purchase Order Item", orders, "purchase_indent")
+		requests = _child_links("Purchase Indent Item", indents, "material_request")
+
+	return requests, receipts
+
+
+def _unissued_stock_qty(row):
+	"""What a request row still owes its requester, in stock UOM.
+
+	Deliberately NOT `_outstanding_stock_qty`. That one also subtracts the quantity an
+	indent has claimed, which is right while the indent is still a pending claim -- it
+	stops the Stores Manager indenting or issuing the same shortage twice. By the time a
+	payment has been made, though, that claim has been fulfilled: the indent became a
+	Purchase Order, the order became a receipt, and the goods are now the very stock
+	being issued. Subtracting it again would count it twice and leave a fully indented
+	request with nothing issuable, which is exactly what happens if this calls the other
+	helper.
+
+	Only issues are subtracted, so a line part-issued from existing stock at approval
+	time correctly owes just the remainder.
+	"""
+	issued = _consumed_stock_qty("Stock Entry Detail", lambda c: c.transfer_qty, row.name)
+	return max(flt(row.stock_qty) - issued, 0.0)
+
+
+def _material_issue_for_requests(requests, target_doc=None):
+	"""Build one Material Issue covering every request behind a payment.
+
+	One Stock Entry rather than one per request: a payment settles invoices that can draw
+	on several requests, and the store issues the goods once. Rows carry their
+	`material_request` / `material_request_item` back-links so
+	`StockEntry.validate_with_material_request` is satisfied and the request's own
+	consumption arithmetic sees the issue.
+
+	Quantities come from the same `_available_stock_qty` / `_consumed_stock_qty`
+	primitives the Stores Manager card uses, so the two can never report different stock.
+	"""
+	target = frappe.get_doc(frappe.parse_json(target_doc)) if target_doc else frappe.new_doc("Stock Entry")
+	target.purpose = MATERIAL_ISSUE
+	target.stock_entry_type = MATERIAL_ISSUE
+
+	company = None
+	for request_name in requests:
+		request = frappe.get_doc("Material Request", request_name)
+		if request.docstatus != 1:
+			continue
+		company = company or request.company
+		for row in request.items:
+			factor = flt(row.conversion_factor) or 1.0
+			issuable = min(_available_stock_qty(row), _unissued_stock_qty(row))
+			if issuable <= 0:
+				continue
+			target.append("items", {
+				"item_code": row.item_code,
+				"item_name": row.item_name,
+				"description": row.description,
+				"qty": issuable / factor,
+				"uom": row.uom,
+				"stock_uom": row.stock_uom,
+				"conversion_factor": factor,
+				# Issuing moves stock OUT of the store the request names.
+				"s_warehouse": row.warehouse,
+				"t_warehouse": None,
+				"material_request": request_name,
+				"material_request_item": row.name,
+			})
+
+	if not target.get("items"):
+		frappe.throw(
+			_("Nothing left to issue against {0} -- either it has all been issued already, or the stock is no longer on hand.").format(
+				", ".join(requests)
+			),
+			title=_("Nothing to Issue"),
+		)
+
+	_apply_stock_entry_defaults(target, company)
+	return target
+
+
+@frappe.whitelist()
+def make_material_issue_from_payment(source_name, target_doc=None, args=None):
+	"""Payment Entry -> Stock Entry (Material Issue), via the request that started it."""
+	requests, receipts = _material_requests_behind_payment(source_name)
+
+	if requests:
+		return _material_issue_for_requests(requests, target_doc)
+
+	if receipts:
+		return _material_issue_from_receipts(receipts, target_doc)
+
+	frappe.throw(
+		_("Nothing to issue for Payment Entry {0}: no Purchase Receipt or Material Request is linked to the invoices it settles.").format(
+			source_name
+		)
+	)
+
+
+def _apply_stock_entry_defaults(target, company=None):
+	"""Fill what a hand-built Stock Entry needs before its own validation runs.
+
+	Same trap as `make_material_issue`: the client hands over a partial target doc and
+	`frappe.get_doc` on a dict applies no field defaults, so posting_date/posting_time
+	stay None and `set_actual_qty` raises out of `get_combine_datetime`.
+	"""
+	if not target.posting_date:
+		target.posting_date = nowdate()
+	if not target.posting_time:
+		target.posting_time = nowtime()
+	if not target.company and company:
+		target.company = company
+
+	# The rows carry s_warehouse, which is what actually posts, but the form also shows a
+	# header "Source Warehouse" and erpnext's own mappers fill it. Left blank it reads as
+	# a half-built document. Only set when every row agrees: a single header value for an
+	# issue drawn from two warehouses would be wrong, and blank is the honest answer.
+	if not target.from_warehouse:
+		sources = set()
+		for row in target.get("items") or []:
+			sources.add(row.get("s_warehouse"))
+		if len(sources) == 1:
+			only = sources.pop()
+			if only:
+				target.from_warehouse = only
+
+	target.set_actual_qty()
+	target.calculate_rate_and_amount()
+
+
+def _material_issue_from_receipts(receipts, target_doc=None):
+	"""Fallback: issue what physically arrived, when no request is behind the payment.
+
+	Built directly rather than through `get_mapped_doc` because there is no single source
+	document here -- a payment can settle invoices drawn from several receipts, and the
+	rows have to be gathered across all of them.
+	"""
+	target = frappe.get_doc(frappe.parse_json(target_doc)) if target_doc else frappe.new_doc("Stock Entry")
+	target.purpose = MATERIAL_ISSUE
+	target.stock_entry_type = MATERIAL_ISSUE
+
+	rows = frappe.get_all(
+		"Purchase Receipt Item",
+		filters={"parent": ["in", receipts], "docstatus": 1},
+		fields=["item_code", "item_name", "description", "stock_uom", "uom",
+		        "conversion_factor", "stock_qty", "warehouse", "parent"],
+		order_by="parent, idx",
+	)
+	for row in rows:
+		if flt(row["stock_qty"]) <= 0:
+			continue
+		target.append("items", {
+			"item_code": row["item_code"],
+			"item_name": row["item_name"],
+			"description": row["description"],
+			# stock_qty, so the issue is in stock UOM and needs no conversion factor of
+			# its own -- the receipt's factor applied to the purchase UOM, not this one.
+			"qty": flt(row["stock_qty"]),
+			"uom": row["stock_uom"],
+			"stock_uom": row["stock_uom"],
+			"conversion_factor": 1.0,
+			"s_warehouse": row["warehouse"],
+			"t_warehouse": None,
+		})
+
+	if not target.get("items"):
+		frappe.throw(_("The receipts behind this payment have no quantity left to issue."))
+
+	_apply_stock_entry_defaults(
+		target, frappe.db.get_value("Purchase Receipt", receipts[0], "company")
+	)
+	return target
