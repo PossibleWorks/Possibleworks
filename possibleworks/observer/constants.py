@@ -41,6 +41,9 @@ IMMEDIATE_SEND_DOCTYPES = [
     # to save as its own request. Listed so a Material Issue raises the same submitted
     # card every other document does.
     "Stock Entry",
+    # Not created inside another document's on_submit in this app -- raised directly
+    # by a user, so no enclosing transaction to strand.
+    "Journal Entry",
     "Expense Claim",
     "Leave Application",
     "Attendance Request",
