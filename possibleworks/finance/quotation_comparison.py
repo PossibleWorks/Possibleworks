@@ -43,6 +43,35 @@ def get_due_tomorrow_rfqs():
 	return {"rfqs": qualifying}
 
 
+@frappe.whitelist()
+def get_rfqs_with_quotations():
+	"""RFQs (submitted, any due date) with at least one submitted Supplier
+	Quotation — for the manual "AI Recommendation" trigger. Unlike
+	get_due_tomorrow_rfqs this ignores schedule_date and pw_recommendation_sent
+	entirely: a user can re-run this on demand for any RFQ regardless of due
+	date or whether the automatic daily job already processed it."""
+	candidates = frappe.get_all(
+		"Request for Quotation",
+		filters={"docstatus": 1},
+		fields=["name", "company", "schedule_date"],
+		order_by="schedule_date desc",
+	)
+
+	qualifying = []
+	for rfq in candidates:
+		try:
+			has_quotation = frappe.db.exists(
+				"Supplier Quotation Item",
+				{"request_for_quotation": rfq.name, "docstatus": 1},
+			)
+			if has_quotation:
+				qualifying.append(rfq)
+		except Exception:
+			frappe.log_error(title=f"get_rfqs_with_quotations: failed checking {rfq.name}")
+
+	return {"rfqs": qualifying}
+
+
 def _vendor_history(supplier):
 	scorecard_score = frappe.db.get_value("Supplier Scorecard", supplier, "supplier_score")
 
