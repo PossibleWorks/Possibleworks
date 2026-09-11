@@ -312,6 +312,7 @@
   {
    "fieldname": "material_request",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Material Request",
    "options": "Material Request",
    "read_only": 1,

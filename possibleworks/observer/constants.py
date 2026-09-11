@@ -34,6 +34,16 @@ IMMEDIATE_SEND_DOCTYPES = [
     "Purchase Invoice",
     "Payment Request",
     "Payment Entry",
+    # Safe despite the commit warning above: nothing in erpnext, hrms or this app inserts
+    # or submits a Stock Entry inside another document's transaction -- every producer
+    # (work_order.make_stock_entry, plant_floor.make_stock_entry, our own
+    # stores_action.make_material_issue) builds an unsaved doc and hands it to the client
+    # to save as its own request. Listed so a Material Issue raises the same submitted
+    # card every other document does.
+    "Stock Entry",
+    # Not created inside another document's on_submit in this app -- raised directly
+    # by a user, so no enclosing transaction to strand.
+    "Journal Entry",
     "Expense Claim",
     "Leave Application",
     "Attendance Request",

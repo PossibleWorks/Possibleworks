@@ -1,5 +1,8 @@
+from email.utils import formataddr, parseaddr
+
 import frappe
 from erpnext.buying.doctype.request_for_quotation.request_for_quotation import RequestforQuotation
+from frappe.email.doctype.email_account.email_account import EmailAccount
 from frappe.utils import format_date
 
 from possibleworks.finance.rfq_portal import build_guest_quotation_url, generate_and_store_token
@@ -79,3 +82,41 @@ class CustomRequestForQuotation(RequestforQuotation):
 					rfq_supplier.save()
 		finally:
 			self.message_for_supplier = original_message
+
+	def send_email(self, data, sender, subject, message, attachments):
+		"""Send the supplier RFQ from the site's outgoing address, not the buyer's.
+
+		erpnext resolves the sender as `frappe.session.user` unless Buying Settings ->
+		fixed_email names an Email Account, so an RFQ reached the supplier from whoever
+		happened to submit it (toshiro@finance.com). That address is an internal identity,
+		is usually not a monitored mailbox, and does not belong to the sending domain, so
+		it also weakens SPF/DKIM alignment on the message.
+
+		fixed_email is still honoured first -- it is erpnext's own way to nominate a
+		procurement address, and overriding it here would make that field silently do
+		nothing. Otherwise the site's DEFAULT OUTGOING account is resolved at send time,
+		so this tracks that setting instead of duplicating it in a second place.
+
+		The display name follows the same rule Frappe applies in
+		email_body.replace_sender: keep one if the sender carried it, otherwise fall back
+		to the Email Account's name. erpnext passes a bare `frappe.session.user`, so in
+		practice the supplier sees the account name -- without this the address ends up
+		repeated as its own display name.
+		"""
+		super().send_email(data, self._outgoing_sender(sender), subject, message, attachments)
+
+	def _outgoing_sender(self, sender):
+		if frappe.db.get_single_value("Buying Settings", "fixed_email"):
+			# erpnext already resolved `sender` from the nominated Email Account.
+			return sender
+
+		# find_default_outgoing, not a query on Email Account: it also covers an SMTP
+		# account configured in site_config rather than as a doctype row, and the muted
+		# -email case used by tests.
+		account = EmailAccount.find_default_outgoing()
+		outgoing_email = account and account.get("email_id")
+		if not outgoing_email:
+			return sender
+
+		display_name = parseaddr(sender or "")[0] or account.name
+		return formataddr((display_name, outgoing_email))

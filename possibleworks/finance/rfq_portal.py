@@ -2,7 +2,7 @@ import hashlib
 import json
 
 import frappe
-from frappe.utils import add_days, get_datetime, get_url, now_datetime
+from frappe.utils import add_days, flt, get_datetime, get_url, now_datetime
 
 from erpnext.accounts.party import get_party_account_currency
 
@@ -148,6 +148,46 @@ def _ensure_item_exists(item_code, item_name, uom):
 	item.insert(ignore_permissions=True)
 
 
+def _ensure_item_tax_template(company, tax_rate):
+	"""Guest-portal equivalent of the PW app's per-rate Item Tax Template
+	auto-create-or-reuse pattern (frontend: createTaxRateTemplateIfMissing in
+	erp-config-utils.ts) - finds or creates ONE Item Tax Template per distinct
+	rate typed by the supplier, scoped to the RFQ's company, and returns its
+	name. Returns None if no rate was given or no tax/chargeable account
+	exists for the company (never blocks the submission over this)."""
+	if tax_rate in (None, ""):
+		return None
+
+	rate = flt(tax_rate)
+	title = str(int(rate)) if rate == int(rate) else str(rate)
+
+	existing = frappe.db.get_value(
+		"Item Tax Template", {"company": company, "title": title}, "name"
+	)
+	if existing:
+		return existing
+
+	default_account = frappe.db.get_value(
+		"Account",
+		{"company": company, "account_type": ["in", ["Tax", "Chargeable"]], "is_group": 0},
+		"name",
+	)
+	if not default_account:
+		return None
+
+	template = frappe.get_doc(
+		{
+			"doctype": "Item Tax Template",
+			"title": title,
+			"company": company,
+			"taxes": [{"tax_type": default_account, "tax_rate": rate}],
+		}
+	)
+	template.flags.ignore_permissions = True
+	template.insert(ignore_permissions=True)
+	return template.name
+
+
 def _validate_token(raw_token):
 	"""Returns (row, error_reason) - error_reason is None when the token is good."""
 	if not raw_token:
@@ -191,6 +231,9 @@ def get_quotation_link_context(token):
 				"qty": item.qty,
 				"uom": item.uom,
 				"schedule_date": item.schedule_date,
+				"price_list_rate": 0,
+				"discount_percentage": 0,
+				"tax_rate": None,
 			}
 			for item in rfq.items
 		]
@@ -302,13 +345,23 @@ def submit_quotation(token, items, terms=None):
 				"item_name",
 				"description",
 				"qty",
-				"rate",
+				"price_list_rate",
+				"discount_percentage",
 				"conversion_factor",
 				"warehouse",
 				"uom",
 			]:
 				args[field] = data.get(field)
 			args["lead_time_days"] = data.get("lead_time_days")
+
+			# Rate is never trusted directly from the guest - only price_list_rate
+			# (raw) + discount_percentage are, and Supplier Quotation's own
+			# calculate_item_values() derives rate/amount/net_amount from those
+			# on save (same split the internal PW Supplier Quotation form uses,
+			# which avoids compounding a discount across repeated edits).
+			item_tax_template = _ensure_item_tax_template(rfq.company, data.get("tax_rate"))
+			if item_tax_template:
+				args["item_tax_template"] = item_tax_template
 
 			# uom is editable even on RFQ-original rows, so a supplier could
 			# type an ad-hoc unit there too - always make sure it resolves.

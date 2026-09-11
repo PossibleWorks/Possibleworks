@@ -97,6 +97,12 @@ after_install = "possibleworks.setup.after_install.set_default_branding"
 extend_bootinfo = ["possibleworks.branding.bootinfo.override_app_titles"]
 after_migrate = "possibleworks.setup.after_install.seed_ai_settings"
 
+# Extend other apps' Connections tabs. Frappe passes the existing data in and takes the
+# result back, so these add to erpnext's dashboards rather than replacing them.
+override_doctype_dashboards = {
+	"Material Request": "possibleworks.finance.dashboard_overrides.material_request",
+}
+
 website_context = {
 	"favicon": "/assets/possibleworks/images/possibleworks-logo.svg",
 	"splash_image": "/assets/possibleworks/images/possibleworks-logo.svg"
