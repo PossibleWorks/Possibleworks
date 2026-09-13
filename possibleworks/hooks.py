@@ -38,7 +38,10 @@ doctype_js = {
 	"Delivery Note": "public/js/ap_invoice/ai_document_form.js",
 	"AI Document Queue": "ap_invoice_processing/doctype/ai_document_queue/ai_document_queue.js",
 	"AI Document Processor Settings": "ap_invoice_processing/doctype/ai_document_processor_settings/ai_document_processor_settings.js",
-	"Employee": "public/js/employee/employee_letters.js",
+	"Employee": [
+		"public/js/employee/employee_letters.js",
+		"public/js/employee/employee_status_reassignment.js",
+	],
 	# Route the buying flow through Purchase Indent: MR -> PI -> PO / RFQ / SQ. Each of
 	# these swaps erpnext's direct "Material Request" picker for a Purchase Indent one.
 	# Stock Entry keeps its Material Request picker on purpose -- transfer and issue
@@ -118,6 +121,7 @@ doc_events = {
 		"on_cancel": "possibleworks.leave_application.reconstruct_attendance_on_leave_cancel",
 	},
 	"Employee": {
+		"validate": "possibleworks.employee.block_status_change_with_active_reports",
 		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
 	},
 	# Keeps a Purchase Indent's ordered_qty / % Ordered / status current. erpnext drives
