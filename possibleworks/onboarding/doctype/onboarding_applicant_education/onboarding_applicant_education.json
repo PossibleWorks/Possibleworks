@@ -1,0 +1,93 @@
+{
+ "actions": [],
+ "creation": "2026-08-14 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "school_univ",
+  "qualification",
+  "level",
+  "year_of_passing",
+  "start_year",
+  "class_per",
+  "is_highest_qualification",
+  "maj_opt_subj",
+  "certificate"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "school_univ",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "School/University"
+  },
+  {
+   "columns": 2,
+   "fieldname": "qualification",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Qualification"
+  },
+  {
+   "columns": 2,
+   "fieldname": "level",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Level",
+   "options": "\nUnder Graduate\nGraduate\nPost Graduate"
+  },
+  {
+   "columns": 1,
+   "fieldname": "year_of_passing",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Year of Passing"
+  },
+  {
+   "fieldname": "start_year",
+   "fieldtype": "Int",
+   "label": "Start Year"
+  },
+  {
+   "columns": 1,
+   "fieldname": "class_per",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Class / Percentage"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_highest_qualification",
+   "fieldtype": "Check",
+   "label": "Highest Qualification"
+  },
+  {
+   "fieldname": "maj_opt_subj",
+   "fieldtype": "Text",
+   "label": "Major/Optional Subjects"
+  },
+  {
+   "description": "Upload as a private file.",
+   "fieldname": "certificate",
+   "fieldtype": "Attach",
+   "label": "Certificate",
+   "print_hide": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-14 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Onboarding",
+ "name": "Onboarding Applicant Education",
+ "owner": "Administrator",
+ "permissions": [],
+ "quick_entry": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

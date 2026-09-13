@@ -1,0 +1,369 @@
+# Copyright (c) 2026, Possibleworks and contributors
+# For license information, please see license.txt
+
+"""Shared constants for the Onboarding module.
+
+Kept free of `frappe` imports so it can be imported from patches, tests and
+`hooks.py` callbacks without pulling in a request context.
+"""
+
+DOCTYPE = "Onboarding Applicant"
+DOCUMENT_TYPE_DOCTYPE = "Onboarding Document Type"
+DOCUMENT_TEMPLATE_DOCTYPE = "Onboarding Document Template"
+
+DEFAULT_TEMPLATE_NAME = "Default Onboarding Documents"
+
+# --------------------------------------------------------------------------- #
+# Statuses
+# --------------------------------------------------------------------------- #
+# docstatus stays 0 (Draft) across every one of these except Onboarded/Cancelled,
+# which are set at submit/cancel time. `status` is deliberately a plain Select
+# managed in code rather than a Frappe Workflow, so no per-site workflow config is
+# required and it can never fight with docstatus.
+
+AWAITING_APPLICANT = "Awaiting Applicant"
+APPLICANT_SUBMITTED = "Applicant Submitted"
+HR_REVIEW = "HR Review"
+READY_TO_ONBOARD = "Ready to Onboard"
+ONBOARDED = "Onboarded"
+CANCELLED = "Cancelled"
+
+STATUSES = (
+	AWAITING_APPLICANT,
+	APPLICANT_SUBMITTED,
+	HR_REVIEW,
+	READY_TO_ONBOARD,
+	ONBOARDED,
+	CANCELLED,
+)
+
+# Statuses in which the external onboarding app may still write applicant fields.
+APPLICANT_EDITABLE_STATUSES = frozenset({AWAITING_APPLICANT})
+
+# Statuses the integration role is allowed to see at all (enforced by the
+# permission_query_conditions / has_permission hooks). Everything submitted or
+# archived is invisible to a leaked integration key.
+APPLICANT_VISIBLE_STATUSES = frozenset({
+	AWAITING_APPLICANT,
+	APPLICANT_SUBMITTED,
+	HR_REVIEW,
+	READY_TO_ONBOARD,
+})
+
+# Allowed status transitions, enforced in validate(). Onboarded/Cancelled are set
+# only by on_submit/on_cancel via db_set, so they are terminal here.
+STATUS_TRANSITIONS = {
+	AWAITING_APPLICANT: {APPLICANT_SUBMITTED, HR_REVIEW, READY_TO_ONBOARD},
+	APPLICANT_SUBMITTED: {AWAITING_APPLICANT, HR_REVIEW, READY_TO_ONBOARD},
+	HR_REVIEW: {AWAITING_APPLICANT, READY_TO_ONBOARD},
+	READY_TO_ONBOARD: {AWAITING_APPLICANT, HR_REVIEW, ONBOARDED},
+	ONBOARDED: {CANCELLED},
+	CANCELLED: set(),
+}
+
+# --------------------------------------------------------------------------- #
+# Roles
+# --------------------------------------------------------------------------- #
+
+HR_ROLES = ("System Manager", "HR Manager", "HR User")
+HR_REVERSAL_ROLES = ("System Manager", "HR Manager")
+
+# Auto-created by DocType.on_update -> make_module_and_roles from the permissions
+# block; no fixture or patch needed.
+INTEGRATION_ROLE = "Onboarding Integration"
+
+# The applicant's portal identity. Deliberately granted NO DocPerm anywhere: portal
+# endpoints prove ownership themselves and then act with ignore_permissions, so this
+# role by itself permits nothing. Its `desk_access` is forced to 0 by the v1_4 patch --
+# roles auto-created from a permissions block default to 1.
+PORTAL_ROLE = "Onboarding Applicant Portal"
+
+# --------------------------------------------------------------------------- #
+# Mass-assignment allowlist
+# --------------------------------------------------------------------------- #
+# `read_only: 1` is a client-side hint with NO server-side enforcement in _save,
+# so /api/resource PUT, /api/v2/document PATCH and run_doc_method can all set any
+# field. This allowlist is enforced in validate(), which every one of those paths
+# goes through.
+
+APPLICANT_WRITABLE_FIELDS = frozenset({
+	# Identity
+	"salutation",
+	"first_name",
+	"middle_name",
+	"last_name",
+	"gender",
+	"date_of_birth",
+	"marital_status",
+	"blood_group",
+	"image",
+	# Contact
+	"cell_number",
+	# Statutory identifiers
+	"aadhar_number",
+	"pan_number",
+	"passport_number",
+	# Address
+	"current_address",
+	"current_accommodation_type",
+	"same_as_current_address",
+	"permanent_address",
+	"permanent_accommodation_type",
+	# Emergency contact
+	"person_to_be_contacted",
+	"relation",
+	"emergency_phone_number",
+	# Bank
+	"salary_mode",
+	"bank_name",
+	"bank_ac_no",
+	"bank_account_holder_name",
+	"ifsc_code",
+	"micr_code",
+	"iban",
+	"provident_fund_account",
+})
+
+# Fields a template may SHOW the applicant but which nobody may ever let them change.
+#
+# `personal_email` is the identity the whole portal is keyed on. `applicant_user` is
+# written exactly once, when HR sends the invite, and nothing re-syncs it afterwards --
+# so an applicant editing this field would:
+#   * detach the record from the login without either side noticing;
+#   * skip the "already belongs to a system user" guard, which only runs on the
+#     account-creation path that a re-invite then short-circuits; and
+#   * put an unverified, applicant-chosen address onto the Employee.
+# Displaying it is useful ("this is the address we have for you"); writing it is not.
+APPLICANT_READONLY_FIELDS = frozenset({"personal_email"})
+
+# Everything a template's Fields section may list, editable or not.
+APPLICANT_SHOWABLE_FIELDS = APPLICANT_WRITABLE_FIELDS | APPLICANT_READONLY_FIELDS
+
+# Set by before_validate() or by our own API, never accepted from the caller, but
+# they do legitimately change during an applicant write so the diff must allow them.
+APPLICANT_SELF_MANAGED_FIELDS = frozenset({
+	"applicant_name",
+	"applicant_declaration",
+	"declaration_accepted_on",
+	"applicant_submitted_on",
+	"total_experience_years",
+})
+
+APPLICANT_WRITABLE_CHILD_TABLES = frozenset({
+	"education",
+	"external_work_history",
+	"documents",
+	"pending_employee_fields",
+})
+
+# Child tables a template's Fields section may offer, and which the portal renders as
+# repeating rows. `documents` is excluded because it has its own section on both the
+# template and the portal; `pending_employee_fields` is HR's, not the applicant's.
+APPLICANT_SHOWABLE_CHILD_TABLES = frozenset({"education", "external_work_history"})
+
+# Everything the template picker may list, scalar or table.
+APPLICANT_TEMPLATE_FIELDS = APPLICANT_SHOWABLE_FIELDS | APPLICANT_SHOWABLE_CHILD_TABLES
+
+# Which child fields the portal collects for each table, in display order. An explicit
+# allowlist rather than "every field on the child doctype": these child rows carry
+# intake-only extras (certificate/relieving-letter Attach fields) that need a different
+# control, and a blanket render would silently start asking for them the day one is
+# added upstream.
+#
+# `total_experience` is deliberately absent: it is derived by
+# `OnboardingApplicantWorkHistory.set_total_experience()` from the dates below, and
+# collecting it would let the applicant contradict the value the controller computes.
+APPLICANT_CHILD_TABLE_COLUMNS = {
+	"education": (
+		"school_univ",
+		"qualification",
+		"level",
+		"year_of_passing",
+		"class_per",
+		"is_highest_qualification",
+	),
+	"external_work_history": (
+		"company_name",
+		"designation",
+		"from_date",
+		"to_date",
+		"is_current_employer",
+		"reason_for_leaving",
+	),
+}
+
+# Derived by the controller, never supplied by any caller. `required_documents` is a
+# snapshot of the selected template, and `document_template` -- the only thing that can
+# change it -- is already HR-only, so a derived change here is safe to exempt from the
+# mass-assignment diff. Without this, an applicant's very first save would be rejected
+# for "changing" a table the system just populated.
+APPLICANT_SYSTEM_CHILD_TABLES = frozenset({"required_documents", "applicant_fields"})
+
+# Everything else -- date_of_joining, company, employee, employee_number,
+# company_email, department, designation, branch, employment_type, grade,
+# reports_to, holiday_list, default_shift, status, hr_remarks, document_template,
+# amended_from -- is HR-only.
+
+# --------------------------------------------------------------------------- #
+# Document type seed data
+# --------------------------------------------------------------------------- #
+# Inserted only if absent. The seeding patch NEVER overwrites is_required /
+# allow_multiple on an existing row -- once installed, the site owns its own
+# required-document policy. That is the configurability requirement.
+
+DEFAULT_DOCUMENT_TYPES = (
+	{
+		"document_type_name": "Aadhaar Card",
+		"is_required": 1,
+		"allow_multiple": 0,
+		"allowed_extensions": "pdf,jpg,jpeg,png",
+	},
+	{
+		"document_type_name": "PAN Card",
+		"is_required": 1,
+		"allow_multiple": 0,
+		"allowed_extensions": "pdf,jpg,jpeg,png",
+	},
+	{
+		"document_type_name": "Cancelled Cheque",
+		"is_required": 1,
+		"allow_multiple": 0,
+		"allowed_extensions": "pdf,jpg,jpeg,png",
+	},
+	{
+		"document_type_name": "Passport Size Photograph",
+		"is_required": 1,
+		"allow_multiple": 0,
+		"allowed_extensions": "jpg,jpeg,png",
+	},
+	{
+		"document_type_name": "Educational Certificate",
+		"is_required": 0,
+		"allow_multiple": 1,
+		"allowed_extensions": "pdf,jpg,jpeg,png",
+	},
+	{
+		"document_type_name": "Relieving Letter",
+		"is_required": 0,
+		"allow_multiple": 1,
+		"allowed_extensions": "pdf,jpg,jpeg,png",
+	},
+	{
+		"document_type_name": "Experience Letter",
+		"is_required": 0,
+		"allow_multiple": 1,
+		"allowed_extensions": "pdf,jpg,jpeg,png",
+	},
+	{
+		"document_type_name": "Recent Payslips",
+		"is_required": 0,
+		"allow_multiple": 1,
+		"allowed_extensions": "pdf,jpg,jpeg,png",
+	},
+	{
+		"document_type_name": "Address Proof",
+		"is_required": 0,
+		"allow_multiple": 0,
+		"allowed_extensions": "pdf,jpg,jpeg,png",
+	},
+	{
+		"document_type_name": "Signed Offer Letter",
+		"is_required": 0,
+		"allow_multiple": 0,
+		"allowed_extensions": "pdf",
+	},
+	{
+		"document_type_name": "Other",
+		"is_required": 0,
+		"allow_multiple": 1,
+		"allowed_extensions": "",
+	},
+)
+
+
+# --------------------------------------------------------------------------- #
+# Downstream records created at submit
+# --------------------------------------------------------------------------- #
+# Submitting an applicant provisions a login, an Employee, and the stock HRMS
+# recruitment/boarding chain. Job Applicant and Job Offer are NOT created because
+# anybody recruited through them -- they exist because `Employee Onboarding` has
+# `job_applicant` and `job_offer` as reqd links, so the checklist cannot exist
+# without them.
+
+JOB_APPLICANT_DOCTYPE = "Job Applicant"
+JOB_OFFER_DOCTYPE = "Job Offer"
+BOARDING_DOCTYPE = "Employee Onboarding"
+BOARDING_TEMPLATE_DOCTYPE = "Employee Onboarding Template"
+
+# Both doctypes carry a `status` Select; these are the options we set.
+JOB_APPLICANT_ACCEPTED = "Accepted"
+JOB_OFFER_ACCEPTED = "Accepted"
+
+# --------------------------------------------------------------------------- #
+# Role profile
+# --------------------------------------------------------------------------- #
+# `Employee` MUST stay in this list. `User.populate_role_profile_roles`
+# (frappe/core/doctype/user/user.py:259) PRUNES any role not granted by an assigned
+# profile on every save -- so the role `Employee.update_user()` appends would be
+# stripped again on the next User save if it were absent here.
+#
+# The profile is assigned AFTER the Employee exists, so the User is created with no
+# roles at all: a failure between the two leaves a powerless account rather than a
+# System Manager.
+
+STANDARD_ROLE_PROFILE = "Standard Employee Role Profile"
+STANDARD_ROLE_PROFILE_ROLES = (
+	"Employee",
+	"HR User",
+	"Leave Approver",
+	"System Manager",
+)
+
+# --------------------------------------------------------------------------- #
+# Default Employee Onboarding template
+# --------------------------------------------------------------------------- #
+# Matched by `title`, NOT by name: `Employee Onboarding Template.autoname` is
+# `HR-EMP-ONT-.#####`, so the title is neither the record name nor unique.
+#
+# No `user` and no `role` on any row, deliberately. `create_task_and_notify_user`
+# then creates the Task and assigns nobody, which is what an admin wants before they
+# have decided who owns what for this particular hire.
+#
+# Every row sets `begin_on`. A blank `begin_on` makes `get_task_dates` return
+# [None, None] -- the Task is still created and still assigned, but with no expected
+# start or end, so it never appears in any date-driven view. 0 means "day one".
+
+DEFAULT_BOARDING_TEMPLATE_TITLE = "Default Employee Onboarding"
+
+DEFAULT_BOARDING_ACTIVITIES = (
+	{
+		"activity_name": "Collect and verify joining documents",
+		"description": "Check the originals against the copies uploaded during onboarding.",
+		"begin_on": 0,
+		"duration": 2,
+	},
+	{
+		"activity_name": "Issue IT assets and system access",
+		"description": "Laptop, accounts, and access to the tools the role needs.",
+		"begin_on": 0,
+		"duration": 3,
+	},
+	{
+		"activity_name": "Complete payroll and statutory enrolment",
+		"description": "Salary structure, bank details, and statutory registrations.",
+		"begin_on": 1,
+		"duration": 4,
+	},
+	{
+		"activity_name": "Company and policy induction",
+		"description": "Introduce the handbook, leave policy, and code of conduct.",
+		"begin_on": 2,
+		"duration": 1,
+	},
+	{
+		"activity_name": "Introduce reporting manager and first-week plan",
+		"description": "Agree the first week's objectives with the reporting manager.",
+		"begin_on": 2,
+		"duration": 3,
+	},
+)

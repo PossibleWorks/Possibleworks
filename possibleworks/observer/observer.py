@@ -11,6 +11,7 @@ from .redis_buffer_service import RedisBufferService
 from .workflow_service import WorkflowService
 from .constants import (
     ALWAYS_OBSERVED_DOCTYPES,
+    DEFER_IMMEDIATE_SEND_FLAG,
     IMMEDIATE_SEND_DOCTYPES,
     SKIP_STATE_CHANGED_CHECK_DOCTYPES,
 )
@@ -127,12 +128,17 @@ class WorkflowEventObserver:
                 f"Observer: Processing {doc.doctype}/{doc.name} - {event_type}"
             )
 
-            if doc.doctype in IMMEDIATE_SEND_DOCTYPES:
+            # A caller midway through building several documents in one transaction sets
+            # this flag; committing under it would strand whatever it has already
+            # created. The event still goes out, via the batch path below.
+            deferred = bool(frappe.flags.get(DEFER_IMMEDIATE_SEND_FLAG))
+
+            if doc.doctype in IMMEDIATE_SEND_DOCTYPES and not deferred:
                 doc_before = doc.get_doc_before_save()
-                payload = PayloadBuilder.build_simple_payload(doc_before,doc,event_type)
+                payload = PayloadBuilder.build_simple_payload(doc_before, doc, event_type)
                 if not payload:
                     frappe.logger().warning(
-                        f"Observer: Failed to build simple payload for {doc.doctype}/{doc.name}"
+                        f"Observer: Failed to build payload for {doc.doctype}/{doc.name}"
                     )
                     _create_dropped_log(doc, event_type, "Immediate", "Could not build payload — check company / tenant_id configuration")
                     return False

@@ -119,6 +119,23 @@ class PayloadBuilder:
             if company:
                 return company
 
+        # 5. Job Applicant carries no company, department or employee field of its own,
+        #    so without this every one of its events would be dropped as unresolvable.
+        #    `company` is a custom field added by the possibleworks v1_5 patch and set
+        #    when the onboarding flow mints the applicant; `job_title` covers records
+        #    created by the recruitment desk against a Job Opening.
+        if doc.doctype == "Job Applicant":
+            if getattr(doc, "job_title", None):
+                company = frappe.db.get_value("Job Opening", doc.job_title, "company")
+                if company:
+                    return company
+            # A submitted Job Offer for this applicant is the next best source.
+            company = frappe.db.get_value(
+                "Job Offer", {"job_applicant": doc.name, "docstatus": 1}, "company"
+            )
+            if company:
+                return company
+
         return None
 
     @staticmethod
@@ -222,13 +239,20 @@ class PayloadBuilder:
         """
         Build a minimal event payload for IMMEDIATE_SEND_DOCTYPES.
 
-        Returns only the fields the backend API needs:
+        A pointer, not a summary: it says what changed and leaves the receiver to fetch
+        the record. Deliberate -- documents like Onboarding Applicant hold Aadhaar, PAN
+        and bank details, and every payload is stored verbatim in Observer Event Log.
+
         {
             "tenant_id": "...",
             "user": "john.doe@company.com",
+            "event_type": "on_submit",
             "document": {
                 "doctype": "Purchase Order",
-                "name": "PUR-ORD-2026-00042"
+                "name": "PUR-ORD-2026-00042",
+                "status": "To Receive and Bill",
+                "docstatus": 1,
+                "employee": null
             }
         }
 
@@ -266,6 +290,14 @@ class PayloadBuilder:
                     "doctype": doc.doctype,
                     "name": doc.name,
                     "status": getattr(doc, "status", None),
+                    # Alongside `status`, not instead of it -- existing consumers read
+                    # `status` and this payload is shared with every procurement
+                    # doctype. It is worth having both because `status` means something
+                    # different on each: on a Purchase Order it mirrors the document
+                    # state, on an Onboarding Applicant it is a separate workflow that
+                    # reads "Ready to Onboard" while the record is still a draft.
+                    # docstatus is 0 Draft / 1 Submitted / 2 Cancelled everywhere.
+                    "docstatus": doc.docstatus,
                     "employee": getattr(doc, "employee", None),
                     **extra_fields
                 },

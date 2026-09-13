@@ -105,8 +105,24 @@ def _get_period_boundaries(target_date, company=None):
     # SAME MONTH WINDOW
     # =========================================================
     if start_day <= end_day:
-        period_start = _build_period_date(year, month, start_day)
-        period_end = _build_period_date(year, month, end_day)
+        # `day` may fall outside this month's own window (e.g. day=20 with a
+        # 6->10 window) -- resolve to the adjacent month's cycle instead of
+        # silently repeating this month's window for an out-of-range date.
+        if day < effective_start:
+            if month == 1:
+                ref_year, ref_month = year - 1, 12
+            else:
+                ref_year, ref_month = year, month - 1
+        elif day > effective_end:
+            if month == 12:
+                ref_year, ref_month = year + 1, 1
+            else:
+                ref_year, ref_month = year, month + 1
+        else:
+            ref_year, ref_month = year, month
+
+        period_start = _build_period_date(ref_year, ref_month, start_day)
+        period_end = _build_period_date(ref_year, ref_month, end_day)
         return period_start, period_end
 
     # =========================================================

@@ -1,0 +1,1306 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ _("Your Onboarding") }}{% endblock %}
+
+{% block page_content %}
+
+{#- One entry of a repeating table. Used for both the saved rows and the blank
+    <template> the Add button clones, so the two can never drift apart. -#}
+{% macro ob_row(t, r, page_editable) %}
+{% set locked = not t.editable or not page_editable %}
+<div class="ob-row">
+	<div class="ob-grid">
+	{% for c in t.columns %}
+		<div class="ob-field {% if c.fieldtype in ('Small Text','Text','Long Text','Phone') %}ob-field--wide{% endif %}">
+			<label class="ob-label">{{ c.label }}</label>
+			{% if c.fieldtype == "Select" %}
+				<div class="ob-selectwrap">
+					<select data-col="{{ c.fieldname }}" class="ob-input" {% if locked %}disabled{% endif %}>
+						{% for opt in c.options_list %}
+						<option value="{{ opt }}" {% if opt == r.get(c.fieldname) %}selected{% endif %}>{{ opt or _("Choose…") }}</option>
+						{% endfor %}
+					</select>
+				</div>
+			{% elif c.fieldtype == "Check" %}
+				<label class="ob-check">
+					<input type="checkbox" data-col="{{ c.fieldname }}"
+						{% if r.get(c.fieldname) %}checked{% endif %} {% if locked %}disabled{% endif %}>
+					<span>{{ _("Yes") }}</span>
+				</label>
+			{% elif c.fieldtype in ("Small Text", "Text", "Long Text") %}
+				<textarea data-col="{{ c.fieldname }}" class="ob-input" rows="2"
+					{% if locked %}disabled{% endif %}>{{ r.get(c.fieldname) or "" }}</textarea>
+			{% elif c.fieldtype == "Date" %}
+				<div class="ob-datewrap">
+					<input data-col="{{ c.fieldname }}" class="ob-input ob-date" type="text"
+						inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy"
+						data-iso="{{ r.get(c.fieldname) or '' }}"
+						value="{{ frappe.format(r.get(c.fieldname), {'fieldtype': 'Date'}) if r.get(c.fieldname) else '' }}"
+						{% if locked %}disabled{% endif %}>
+					<svg class="ob-date-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
+						stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+						<rect x="3" y="5" width="18" height="16" rx="2"/>
+						<path d="M8 3v4M16 3v4M3 10h18"/>
+					</svg>
+				</div>
+			{% elif c.fieldtype == "Int" %}
+				<input data-col="{{ c.fieldname }}" class="ob-input" type="number" step="1"
+					value="{{ r.get(c.fieldname) if r.get(c.fieldname) else '' }}"
+					{% if locked %}disabled{% endif %}>
+			{% else %}
+				<input data-col="{{ c.fieldname }}" class="ob-input" type="text"
+					value="{{ r.get(c.fieldname) or '' }}" {% if locked %}disabled{% endif %}>
+			{% endif %}
+		</div>
+	{% endfor %}
+	</div>
+	{% if not locked %}
+	<button type="button" class="ob-row-remove" aria-label="{{ _('Remove this entry') }}">{{ _("Remove") }}</button>
+	{% endif %}
+</div>
+{% endmacro %}
+
+<div class="ob">
+
+{% if error %}
+	<div class="ob-shell"><div class="ob-note ob-note--warn">{{ error }}</div></div>
+{% else %}
+
+	{# ---- header: who, where, and how far along ------------------------------ #}
+	<header class="ob-hero">
+		<div class="ob-shell">
+			<p class="ob-eyebrow">{{ company }}</p>
+			<h1 class="ob-title">
+				{% if greeting %}{{ _("Welcome, {0}").format(greeting) }}{% else %}{{ _("Welcome aboard") }}{% endif %}
+			</h1>
+			{# Kept on one line: a newline here collapses to a space and leaves a gap
+			   before the full stop. #}
+			<p class="ob-lede">{{ _("A few details before your first day") }}{% if doc.date_of_joining %}, <span class="ob-date">{{ frappe.format(doc.date_of_joining, {"fieldtype": "Date"}) }}</span>{% endif %}.</p>
+
+			{% if editable and progress.required %}
+			<div class="ob-progress" aria-label="{{ _('Completion') }}" data-required="{{ progress.required }}">
+				{# The starting width is a data attribute rather than an inline style, so the
+				   fill is set in exactly one place (the script, which owns it from then on)
+				   instead of two. It also keeps Jinja out of a `style` attribute, which no
+				   CSS parser can read -- editors flag `width: {{ ... }}` as a syntax error. #}
+				<div class="ob-progress-bar"><span id="ob-progress-fill" data-percent="{{ progress.percent }}"></span></div>
+				<p class="ob-progress-text">
+					<b id="ob-done">{{ progress.done }}</b> {{ _("of") }} {{ progress.required }} {{ _("required items complete") }}
+				</p>
+			</div>
+			{% endif %}
+		</div>
+	</header>
+
+	<div class="ob-shell">
+
+	{% if not editable %}
+		<div class="ob-note ob-note--done">
+			<b>{{ _("All done.") }}</b>
+			{{ _("Your details are with the HR team. You will hear from them shortly.") }}
+		</div>
+	{% endif %}
+
+	<div id="ob-missing" class="ob-note ob-note--warn {% if not missing %}is-hidden{% endif %}">
+		<b>{{ _("Still to do") }}</b>
+		<ul id="ob-missing-list">{% for item in missing %}<li>{{ item }}</li>{% endfor %}</ul>
+	</div>
+
+	<form id="ob-form" onsubmit="return false">
+
+		{% if fields %}
+		<section class="ob-card">
+			<h2 class="ob-h2">{{ _("Your details") }}</h2>
+			<div class="ob-grid">
+			{% for f in fields %}
+				<div class="ob-field {% if f.fieldtype in ('Small Text','Text','Long Text','Phone') %}ob-field--wide{% endif %}"
+					data-fieldname="{{ f.fieldname }}">
+					<label class="ob-label" for="f-{{ f.fieldname }}">
+						{{ _(f.label) }}{% if f.required %}<span class="ob-star">*</span>{% endif %}
+					</label>
+
+					{% if not f.editable %}
+						<div class="ob-locked">
+							<span>{% if f.fieldtype == "Date" and f.value %}{{ frappe.format(f.value, {"fieldtype": "Date"}) }}{% else %}{{ f.value or "—" }}{% endif %}</span>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+							</svg>
+						</div>
+					{% elif f.fieldtype == "Phone" %}
+						{# A Phone must carry a dialling code: the server parses it with no
+						   default region, so a bare 10-digit number is rejected outright. #}
+						<div class="ob-phone" data-phone="{{ f.fieldname }}">
+							<select class="ob-input ob-phone-cc" aria-label="{{ _('Country code') }}"
+								{% if not editable %}disabled{% endif %}>
+								{% for c in country_codes %}
+								{#- Flag + code only: the country name made this control wider than the number
+								    field beside it. `value` stays the dialling code, which is what the
+								    script reads and what the server needs. `title` keeps the name
+								    reachable on hover. -#}
+								<option value="{{ c.isd }}" title="{{ c.name }}"
+									{% if c.isd == f.value_isd %}selected{% endif %}>{{ c.flag }} {{ c.isd }}</option>
+								{% endfor %}
+							</select>
+							<input id="f-{{ f.fieldname }}" name="{{ f.fieldname }}"
+								class="ob-input ob-phone-number" type="tel" inputmode="tel"
+								autocomplete="tel-national" value="{{ f.value_number or '' }}"
+								{% if not editable %}disabled{% endif %}>
+						</div>
+					{% elif f.fieldtype == "Select" %}
+						<div class="ob-selectwrap">
+							<select id="f-{{ f.fieldname }}" name="{{ f.fieldname }}" class="ob-input"
+								{% if not editable %}disabled{% endif %}>
+								{% for opt in f.options_list %}
+								<option value="{{ opt }}" {% if opt == f.value %}selected{% endif %}>{{ opt or _("Choose…") }}</option>
+								{% endfor %}
+							</select>
+						</div>
+					{% elif f.fieldtype in ("Small Text", "Text", "Long Text") %}
+						<textarea id="f-{{ f.fieldname }}" name="{{ f.fieldname }}" class="ob-input" rows="3"
+							{% if not editable %}disabled{% endif %}>{{ f.value or "" }}</textarea>
+					{% elif f.fieldtype == "Check" %}
+						<label class="ob-check">
+							<input type="checkbox" id="f-{{ f.fieldname }}" name="{{ f.fieldname }}"
+								{% if f.value %}checked{% endif %} {% if not editable %}disabled{% endif %}>
+							<span>{{ _("Yes") }}</span>
+						</label>
+					{% elif f.fieldtype == "Date" %}
+						{# A text input with our own picker. The native control cannot be
+						   styled at all, and worse, it opens on the current month -- a
+						   1995 birthday means paging back hundreds of months. #}
+						<div class="ob-datewrap">
+							<input id="f-{{ f.fieldname }}" name="{{ f.fieldname }}" class="ob-input ob-date"
+								type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy"
+								data-iso="{{ f.value or '' }}"
+								value="{{ frappe.format(f.value, {'fieldtype': 'Date'}) if f.value else '' }}"
+								{% if not editable %}disabled{% endif %}>
+							<svg class="ob-date-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
+								stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+								<rect x="3" y="5" width="18" height="16" rx="2"/>
+								<path d="M8 3v4M16 3v4M3 10h18"/>
+							</svg>
+						</div>
+					{% else %}
+						<input id="f-{{ f.fieldname }}" name="{{ f.fieldname }}" class="ob-input"
+							type="text" value="{{ f.value or '' }}" {% if not editable %}disabled{% endif %}>
+					{% endif %}
+
+					{% if f.help_text or f.description %}
+					{% endif %}
+				</div>
+			{% endfor %}
+			</div>
+		</section>
+		{% endif %}
+
+		{# ---- repeating rows: education, work experience ---------------------- #}
+		{% for t in tables %}
+		<section class="ob-card ob-table" data-table="{{ t.fieldname }}">
+			<h2 class="ob-h2">
+				{{ _(t.label) }}{% if t.required %}<span class="ob-star">*</span>{% endif %}
+			</h2>
+
+			<div class="ob-rows">
+			{% for r in t.rows %}{{ ob_row(t, r, editable) }}{% endfor %}
+			</div>
+
+
+			{% if t.editable and editable %}
+			{# The blank row is rendered by the SAME macro as the saved ones, so an added
+			   entry can never drift from an existing one as columns change. #}
+			<template class="ob-row-template">{{ ob_row(t, {}, editable) }}</template>
+			<button type="button" class="ob-row-add">+ {{ _("Add entry") }}</button>
+			{% endif %}
+		</section>
+		{% endfor %}
+
+		{% if documents %}
+		<section class="ob-card">
+			<h2 class="ob-h2">{{ _("Your documents") }}</h2>
+			<div class="ob-docs">
+			{% for d in documents %}
+				{# `is-done` and the drop label's visibility are both toggled by script after
+				   an upload or a removal, so the initial render only sets the starting
+				   state -- it is never the only thing that can produce it. #}
+				<div class="ob-doc {% if d.files %}is-done{% endif %}" data-document-type="{{ d.document_type }}"
+					data-allow-multiple="{{ 1 if d.allow_multiple else 0 }}">
+					{#- A red asterisk, the same marker the fields above use for a required
+					    answer. Whether a document is in yet is answered by the file listed
+					    below it, so a status chip only repeated that. -#}
+					<div class="ob-doc-name">
+						{{ d.document_type }}{% if d.required %}<span class="ob-star">*</span>{% endif %}
+					</div>
+
+					<div class="ob-files">{% for file in d.files %}<div class="ob-file">
+							<a href="{{ file.file_url }}" target="_blank" rel="noopener">{{ file.file_name }}</a>
+							{%- if editable %}
+							<button type="button" class="ob-remove" data-row="{{ file.row_name }}"
+								aria-label="{{ _('Remove') }}">&times;</button>
+							{%- endif %}
+						</div>{% endfor %}</div>
+
+					{% if editable %}
+						<label class="ob-drop {% if d.files and not d.allow_multiple %}is-hidden{% endif %}">
+							<input type="file" class="ob-upload" data-document-type="{{ d.document_type }}"
+								{% if d.allowed_extensions %}accept=".{{ d.allowed_extensions.replace(',', ',.') }}"{% endif %}>
+							<span class="ob-drop-main"
+								data-first="{{ _('Upload') }}" data-more="{{ _('Add another') }}">
+								{% if d.files %}{{ _("Add another") }}{% else %}{{ _("Upload") }}{% endif %}
+							</span>
+						</label>
+					{% endif %}
+				</div>
+			{% endfor %}
+			</div>
+		</section>
+		{% endif %}
+
+		{% if editable %}
+		<section class="ob-card ob-card--final">
+			<label class="ob-check ob-declaration">
+				<input type="checkbox" id="ob-declaration">
+				<span>{{ _("I confirm the information and documents I have provided are true and complete.") }}</span>
+			</label>
+		</section>
+		{% endif %}
+	</form>
+	</div>
+
+	{% if editable %}
+	<div class="ob-bar">
+		<div class="ob-shell ob-bar-inner">
+			<div class="ob-bar-actions">
+				<button type="button" id="ob-save" class="ob-btn">{{ _("Save") }}</button>
+				<button type="button" id="ob-submit" class="ob-btn ob-btn--primary">{{ _("Submit to HR") }}</button>
+			</div>
+		</div>
+	</div>
+	{% endif %}
+{% endif %}
+</div>
+
+<style>
+@import url("https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap");
+
+/* Calm, institutional, unhurried. Someone is handing over their Aadhaar and bank details
+   to a new employer -- the page should feel considered and trustworthy, not like a form.
+   Nunito throughout, the blue ramp for anything that means progress or action, and one
+   clear answer to "what's left?".
+
+   Tokens follow the Possibleworks design system, and live on :root rather than on .ob so
+   the Frappe dialogs at the bottom of this sheet can read them too -- those render at
+   <body> level, outside .ob. They are namespaced --ob-* so nothing here can overwrite a
+   variable the surrounding web layout depends on. */
+:root {
+	--ob-paper: #f5f8fe;        /* Ultra Light Blue -- the page ground */
+	--ob-card: #ffffff;         /* White      */
+	--ob-ink: #1f242e;          /* Primary Black   */
+	--ob-ink-soft: #626d84;     /* Dark Grey       */
+	--ob-ink-mute: #8a94a8;     /* Mid Grey        */
+	--ob-line: #b9bdc6;         /* Light Grey      */
+	--ob-rule: #e3e5e8;         /* Extra Light Grey */
+	--ob-rule-soft: #f1f2f4;    /* Ultra Light Grey */
+
+	--ob-accent: #2e5cb8;       /* Primary Blue -- progress, completion, action */
+	--ob-accent-dark: #0f1e3d;  /* Dark Blue        */
+	--ob-accent-line: #cfdefc;  /* Light Blue       */
+	--ob-accent-soft: #e7eefe;  /* Extra Light Blue */
+	--ob-accent-faint: #f5f8fe; /* Ultra Light Blue */
+
+	--ob-warn: #d26300;         /* Amber (high) */
+	--ob-warn-line: #ffe8cb;    /* Amber (mid)  */
+	--ob-warn-soft: #fff6ea;    /* Amber (low)  */
+	--ob-star: #d92644;         /* Red (high)   */
+	--ob-star-soft: #fceaed;    /* Red (low)    */
+
+	/* The system defines exactly two: 12px for surfaces, 8px for controls. */
+	--ob-radius: 12px;
+	--ob-radius-sm: 8px;
+	--ob-font: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	--ob-shadow: 0 1px 2px rgba(31, 36, 46, .04);
+}
+.ob {
+	background: var(--ob-paper);
+	color: var(--ob-ink);
+	font-family: var(--ob-font);
+	margin: -15px 0 0;        /* absorb the web layout's default padding */
+	padding-bottom: 140px;
+	min-height: 100vh;
+}
+/* One flat reset rather than a value per element. The web layout puts 0.06em on body
+   and -0.025em on every h1-h3, so anything left unset here inherits tracking from
+   outside the page -- which is what made it look inconsistent between headings, labels
+   and inputs. `.ob *` outranks both. */
+/* The ground goes on <body>, because main.container caps the content at 1290px with
+   80px of side padding -- so .ob alone left the body's white showing down both gutters
+   and below the sticky bar. Every element between the two is transparent. */
+body.ob-page { background: var(--ob-paper); }
+
+.ob, .ob * { letter-spacing: 0; }
+
+.ob-shell { max-width: 680px; margin: 0 auto; padding: 0 22px; }
+
+/* --- header ------------------------------------------------------------- */
+/* No band of its own. Its gradient and rule only spanned main.container's width, so
+   against a full-width ground they showed up as a lighter rectangle with two visible
+   seams -- and the system has no gradient in it besides the AI one. The ground now runs
+   unbroken from the navbar down; the spacing alone separates the title from the form. */
+.ob-hero {
+	padding: 56px 0 30px;
+	margin-bottom: 20px;
+}
+.ob-eyebrow {
+	font-size: 11px;
+	color: var(--ob-accent); font-weight: 700; margin: 0 0 12px;
+}
+.ob-title {
+	font-family: var(--ob-font); font-weight: 800;
+	font-size: clamp(30px, 5vw, 42px);
+	line-height: 1.1;
+	margin: 0 0 10px; color: var(--ob-ink);
+}
+.ob-lede { font-size: 15px; color: var(--ob-ink-soft); margin: 0; }
+.ob-date { color: var(--ob-ink); font-weight: 700; white-space: nowrap; }
+
+.ob-progress { margin-top: 26px; }
+.ob-progress-bar {
+	height: 6px; border-radius: 99px; background: var(--ob-rule); overflow: hidden;
+}
+.ob-progress-bar span {
+	display: block; height: 100%; width: 0; border-radius: 99px; background: var(--ob-accent);
+	transition: width .5s cubic-bezier(.4,0,.2,1);
+}
+.ob-progress-text { font-size: 12.5px; color: var(--ob-ink-soft); margin: 9px 0 0; }
+.ob-progress-text b { color: var(--ob-ink); font-weight: 700; }
+
+/* --- notes -------------------------------------------------------------- */
+.ob-note {
+	border-radius: var(--ob-radius); padding: 16px 18px; margin-bottom: 24px;
+	font-size: 14px; line-height: 1.55;
+}
+.ob-note--warn { background: var(--ob-warn-soft); color: var(--ob-warn); border: 1px solid var(--ob-warn-line); }
+.ob-note--done { background: var(--ob-accent-soft); color: var(--ob-accent-dark); border: 1px solid var(--ob-accent-line); }
+.ob-note ul { margin: 8px 0 0; padding-left: 18px; }
+.ob-note li { margin: 2px 0; }
+.is-hidden { display: none; }
+
+/* --- cards -------------------------------------------------------------- */
+.ob-card {
+	background: var(--ob-card); border: 1px solid var(--ob-rule); border-radius: var(--ob-radius);
+	padding: 26px; margin-bottom: 20px;
+	box-shadow: var(--ob-shadow);
+}
+/* Same surface and stroke as every other card -- only the padding is tighter, because
+   it holds a single line of text. */
+.ob-card--final { padding: 16px 18px; }
+.ob-h2 {
+	font-family: var(--ob-font); font-size: 19px; font-weight: 700;
+	margin: 0 0 22px; padding-bottom: 12px; border-bottom: 1px solid var(--ob-rule);
+}
+
+/* --- fields ------------------------------------------------------------- */
+.ob-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 18px; }
+.ob-field--wide { grid-column: 1 / -1; }
+@media (max-width: 620px) { .ob-grid { grid-template-columns: 1fr; } }
+
+.ob-label {
+	display: block; font-size: 12.5px; font-weight: 700;
+	color: var(--ob-ink); margin-bottom: 7px;
+}
+.ob-star { color: var(--ob-star); margin-left: 3px; }
+.ob-input {
+	width: 100%; padding: 10px 13px; font-size: 14px; color: var(--ob-ink);
+	background: var(--ob-card); border: 1px solid var(--ob-rule); border-radius: var(--ob-radius-sm);
+	transition: border-color .15s, box-shadow .15s; font-family: inherit;
+}
+.ob-input:hover { border-color: var(--ob-line); }
+/* Same treatment as a disabled button: Ultra Light Grey fill, Mid Grey text. */
+.ob-input:disabled {
+	background: var(--ob-rule-soft); border-color: var(--ob-rule);
+	color: var(--ob-ink-mute); cursor: default;
+}
+.ob-input:focus {
+	outline: none; border-color: var(--ob-accent);
+	box-shadow: 0 0 0 3px rgba(46, 92, 184, .14);
+}
+textarea.ob-input { resize: vertical; min-height: 82px; }
+.ob-selectwrap { position: relative; }
+.ob-selectwrap::after {
+	content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
+	border-right: 1.5px solid var(--ob-ink-soft); border-bottom: 1.5px solid var(--ob-ink-soft);
+	transform: translateY(-70%) rotate(45deg); pointer-events: none;
+}
+.ob-selectwrap select { appearance: none; padding-right: 34px; }
+
+/* --- date picker -------------------------------------------------------- */
+.ob-datewrap { position: relative; }
+/* `input.`, not a bare `.ob-date`: the class is also on the joining-date <span> in the
+   hero, and the room this reserves for the calendar icon was showing up there as a 36px
+   gap before the full stop. */
+input.ob-date { padding-right: 36px; }
+.ob-date-icon {
+	position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
+	color: var(--ob-ink-soft); pointer-events: none;
+}
+.ob-cal {
+	position: absolute; z-index: 40; margin-top: 6px; width: 268px; padding: 12px;
+	background: var(--ob-card); border: 1px solid var(--ob-rule); border-radius: var(--ob-radius);
+	box-shadow: 0 14px 34px -10px rgba(31, 36, 46, .22);
+	animation: ob-pop .16s ease-out;
+}
+.ob-cal-head { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.ob-cal-head select {
+	flex: 1; padding: 5px 7px; font-size: 12.5px; font-family: inherit; color: var(--ob-ink);
+	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius-sm); background: var(--ob-card); cursor: pointer;
+}
+.ob-cal-head select:focus { outline: none; border-color: var(--ob-accent); }
+.ob-nav {
+	width: 26px; height: 26px; flex: none; border: 1px solid var(--ob-rule); border-radius: var(--ob-radius-sm);
+	background: var(--ob-card); color: var(--ob-ink-soft); cursor: pointer; font-size: 14px; line-height: 1;
+}
+.ob-nav:hover { border-color: var(--ob-accent); color: var(--ob-accent); }
+.ob-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.ob-cal-dow {
+	font-size: 10px; font-weight: 700; text-transform: uppercase;
+	color: var(--ob-ink-mute); text-align: center; padding-bottom: 5px;
+}
+.ob-cal-day {
+	border: 0; background: none; font-family: inherit; font-size: 12.5px; color: var(--ob-ink);
+	height: 31px; border-radius: var(--ob-radius-sm); cursor: pointer; transition: background .12s, color .12s;
+}
+.ob-cal-day:hover { background: var(--ob-accent-soft); }
+.ob-cal-day.is-muted { color: var(--ob-line); }
+.ob-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--ob-accent); color: var(--ob-accent); font-weight: 700; }
+.ob-cal-day.is-on { background: var(--ob-accent); color: var(--ob-card); font-weight: 700; }
+.ob-cal-foot {
+	display: flex; justify-content: space-between; margin-top: 9px; padding-top: 9px;
+	border-top: 1px solid var(--ob-rule);
+}
+.ob-cal-foot button {
+	border: 0; background: none; font-family: inherit; font-size: 12px; font-weight: 700;
+	color: var(--ob-accent); cursor: pointer; padding: 3px 5px; border-radius: 5px;
+}
+.ob-cal-foot button:hover { background: var(--ob-accent-soft); }
+
+.ob-locked {
+	display: flex; align-items: center; justify-content: space-between; gap: 10px;
+	padding: 10px 13px; font-size: 14px; color: var(--ob-ink-soft);
+	background: var(--ob-rule-soft); border: 1px solid var(--ob-rule); border-radius: var(--ob-radius-sm);
+}
+.ob-locked svg { flex: none; opacity: .45; }
+
+/* Mirrored from another field -- readable, clearly not yours to edit. The grey fill
+   carries that on its own; the dashed edge it used to have is not in the system. */
+.ob-field.is-mirrored .ob-input {
+	background: var(--ob-rule-soft); color: var(--ob-ink-soft); cursor: default;
+}
+.ob-field.is-mirrored .ob-input:focus { box-shadow: none; border-color: var(--ob-rule); }
+
+/* Centred on the label rather than pinned to its top edge, which left the box floating
+   above a single line of text. */
+/* `margin: 0` is the fix, not the alignment: both this and `.ob-drop` are <label>s, and
+   the framework's reboot gives every label `margin-bottom: 8px`. As a grid or flex item
+   that 8px joins the item's margin box, so the row sized itself 8px taller than its
+   tallest child and centring then pushed the content to the top with the slack below. */
+.ob-check { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 14px; cursor: pointer; }
+/* Traced from the system's Checkbox page: default is white with a 1px Extra Light Grey
+   stroke at a 4px radius; hover fills Extra Light Blue with a Light Blue stroke; selected
+   is a solid Primary Blue square with NO stroke and a white tick just over half the box
+   wide. Disabled reuses the greys the system uses everywhere else for it.
+
+   The `!important` and the attribute selector are both load-bearing. The framework's
+   element/checkbox.scss forces `width: var(--checkbox-size) !important` and
+   `margin-right: !important`, which is what made the box 14x15 instead of square, and its
+   `:checked` rule sets `background-size: 57%, 100%` for a two-layer icon+gradient fill --
+   with one layer here that 57% threw the tick off centre. Every background longhand is
+   therefore restated rather than using the shorthand. */
+.ob-check input[type="checkbox"] {
+	appearance: none; -webkit-appearance: none;
+	box-sizing: border-box;
+	width: 18px !important; height: 18px; flex: none;
+	margin: 0 !important;
+	border: 1px solid var(--ob-rule); border-radius: 4px;
+	background-color: var(--ob-card);
+	background-image: none;
+	background-repeat: no-repeat;
+	background-position: center center;
+	background-size: 10px 8px;
+	cursor: pointer;
+	transition: background-color .15s, border-color .15s;
+}
+.ob-check input[type="checkbox"]:hover {
+	border-color: var(--ob-accent-line); background-color: var(--ob-accent-soft);
+}
+.ob-check input[type="checkbox"]:checked {
+	border: 0;
+	background-color: var(--ob-accent);
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='8' viewBox='0 0 10 8'><path d='M1 4.2l2.7 2.7L9 1.1' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+	background-size: 10px 8px;
+}
+.ob-check input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 3px rgba(46, 92, 184, .14); }
+.ob-check input[type="checkbox"]:disabled {
+	cursor: default; border: 1px solid var(--ob-rule); background-color: var(--ob-rule-soft);
+}
+.ob-check input[type="checkbox"]:disabled:checked {
+	border: 0; background-color: var(--ob-line);
+}
+.ob-declaration { line-height: 1.55; }
+
+/* --- documents ---------------------------------------------------------- */
+/* Compact rows, not stacked panels -- a checklist of eleven documents has to stay
+   scannable, and a tall card per item turns it into endless scrolling. */
+.ob-docs { display: grid; gap: 8px; }
+/* Every row is the same two-column shape -- name on the left, the upload control right
+   aligned beside it -- and any attached files drop into a second row spanning both
+   tracks. Each child is placed explicitly rather than left to auto-placement, which is
+   what made rows jump around as soon as one of them had a file and the others did not. */
+.ob-doc {
+	display: grid; grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center; gap: 8px 12px;
+	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius); padding: 11px 14px;
+	transition: border-color .18s;
+}
+.ob-doc.is-done { border-color: var(--ob-accent-line); }
+/* align-self on both, not just align-items on the container: the upload control is a
+   flex label, and leaving its alignment to the container let the row track size itself
+   from a baseline rather than from the taller item -- which parked the name and the
+   button near the top of the row with the slack underneath. */
+/* min-height matches the upload control's, so the name row keeps one height whether the
+   control is showing, hidden after a single-file upload, or absent on a read-only page. */
+.ob-doc > .ob-doc-name {
+	grid-column: 1; grid-row: 1; align-self: center;
+	display: flex; align-items: center; min-height: 36px;
+}
+.ob-doc > .ob-drop { grid-column: 2; grid-row: 1; align-self: center; justify-self: end; }
+.ob-doc > .ob-files { grid-column: 1 / -1; grid-row: 2; align-self: start; }
+.ob-doc > .ob-files:empty { display: none; }
+@media (max-width: 560px) {
+	.ob-doc { grid-template-columns: minmax(0, 1fr); }
+	.ob-doc > .ob-drop { grid-column: 1; grid-row: 2; justify-self: stretch; }
+	.ob-doc > .ob-files { grid-row: 3; }
+}
+.ob-doc-name { font-size: 14px; font-weight: 700; }
+
+
+.ob-files { display: grid; gap: 6px; }
+.ob-file {
+	display: flex; align-items: center; justify-content: space-between; gap: 10px;
+	font-size: 13px; padding: 8px 11px;
+	background: var(--ob-accent-faint); border-radius: var(--ob-radius-sm);
+}
+.ob-file a { color: var(--ob-accent); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+.ob-remove {
+	border: 0; background: none; color: var(--ob-ink-mute); font-size: 19px; line-height: 1;
+	cursor: pointer; padding: 0 3px; border-radius: 5px;
+}
+.ob-remove:hover { color: var(--ob-star); background: var(--ob-star-soft); }
+
+/* Replaces the browser's raw "Choose file / No file chosen" control. */
+.ob-drop {
+	display: flex; align-items: center; gap: 8px; flex: none; margin: 0;
+	padding: 8px 14px; cursor: pointer; white-space: nowrap;
+	border: 0; border-radius: var(--ob-radius-sm); background: var(--ob-accent-soft);
+	transition: background .18s;
+}
+/* Deepening the fill is what signals a live drop target now that there is no dashed
+   edge to brighten -- the system has no dashed border in it. */
+.ob-drop:hover, .ob-drop.is-over { background: var(--ob-accent-line); }
+.ob-drop input { display: none; }
+.ob-drop-main { font-size: 13px; font-weight: 700; color: var(--ob-accent); }
+/* `.is-hidden` is declared earlier in the sheet, so on equal specificity these
+   display-carrying rules would win it. Restate it where it has to bite. */
+.ob-drop.is-hidden { display: none; }
+@media (max-width: 560px) { .ob-drop { justify-content: center; } }
+
+/* --- phone ---------------------------------------------------------------
+   The dialling code is a control, not decoration: without it the value fails
+   `validate_phone_number_with_country_code` server-side and there is no way for the
+   applicant to see why. */
+/* Just wide enough for a flag, the longest dialling code (+1684) and the chevron --
+   everything left over goes to the number, which is the part being typed. */
+.ob-phone { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; }
+.ob-phone-cc {
+	appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23626d84' stroke-width='1.6'/></svg>");
+	background-repeat: no-repeat; background-position: right 11px center;
+	padding-right: 28px; text-overflow: ellipsis;
+}
+@media (max-width: 560px) { .ob-phone { grid-template-columns: 1fr; } }
+
+/* --- repeating rows ------------------------------------------------------
+   Education and previous jobs are lists, not single answers. Each entry gets its own
+   bordered block so it reads as one item rather than a wall of inputs. */
+.ob-rows { display: grid; gap: 12px; }
+.ob-row {
+	position: relative; padding: 15px 16px 13px;
+	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius); background: var(--ob-accent-faint);
+}
+.ob-row .ob-grid { margin: 0; }
+.ob-row-remove {
+	position: absolute; top: 9px; right: 11px;
+	border: 0; background: none; padding: 2px 5px; border-radius: 6px; cursor: pointer;
+	font-size: 11px; font-weight: 700; text-transform: uppercase;
+	color: var(--ob-ink-mute); transition: color .15s, background .15s;
+}
+.ob-row-remove:hover { color: var(--ob-star); background: var(--ob-star-soft); }
+.ob-row-add {
+	margin-top: 12px; padding: 9px 15px; cursor: pointer;
+	font-family: inherit; font-size: 13px; font-weight: 700; color: var(--ob-accent);
+	background: var(--ob-accent-soft); border: 0; border-radius: var(--ob-radius-sm);
+	transition: background .18s;
+}
+.ob-row-add:hover { background: var(--ob-accent-line); }
+
+/* --- sticky actions ----------------------------------------------------- */
+.ob-bar {
+	position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+	background: rgba(255, 255, 255, .93); backdrop-filter: blur(9px);
+	border-top: 1px solid var(--ob-rule);
+}
+.ob-bar-inner {
+	display: flex; align-items: center; justify-content: flex-end; gap: 16px;
+	padding-top: 13px; padding-bottom: 13px;
+}
+.ob-bar-actions { display: flex; gap: 9px; flex: none; }
+/* Three variants and no others, per the system's Button page: secondary is a flat
+   Extra Light Blue fill with Primary Blue text and no border; primary is a solid
+   Primary Blue fill; disabled is a flat Ultra Light Grey fill with Light Grey text.
+   Nothing in the system carries a shadow or lifts on hover, so neither do these. */
+.ob-btn {
+	padding: 9px 17px; font-size: 13.5px; font-weight: 700; font-family: inherit;
+	border: 0; border-radius: var(--ob-radius-sm);
+	background: var(--ob-accent-soft); color: var(--ob-accent);
+	cursor: pointer; transition: background .15s, color .15s;
+}
+.ob-btn:hover { background: var(--ob-accent-line); }
+.ob-btn--primary { background: var(--ob-accent); color: var(--ob-card); }
+.ob-btn--primary:hover { background: var(--ob-accent-dark); }
+.ob-btn[disabled], .ob-btn--primary[disabled] {
+	background: var(--ob-rule-soft); color: var(--ob-line); cursor: not-allowed;
+}
+@media (max-width: 620px) {
+	.ob-bar-actions { flex: 1; }
+	.ob-btn { flex: 1; }
+}
+
+/* --- dialogs ------------------------------------------------------------ */
+/* Frappe renders msgprint at <body> level, outside .ob, so these are scoped to a
+   class this page adds to <body>. Never restyle Desk dialogs by accident. */
+body.ob-page .modal-backdrop.show { background: var(--ob-accent-dark); opacity: .38; }
+body.ob-page .modal-dialog { max-width: 470px; margin-top: 12vh; }
+body.ob-page .modal-content {
+	border: 1px solid var(--ob-rule); border-radius: var(--ob-radius); overflow: hidden;
+	background: var(--ob-card); box-shadow: 0 10px 30px -12px rgba(31, 36, 46, .24);
+	letter-spacing: 0;
+}
+body.ob-page .modal-header {
+	padding: 18px 22px 12px; border-bottom: 1px solid var(--ob-rule-soft); align-items: flex-start;
+}
+body.ob-page .modal-title {
+	font-family: var(--ob-font);
+	font-size: 19px; font-weight: 700; color: var(--ob-ink); margin: 0;
+}
+body.ob-page .modal-header .close, body.ob-page .modal-header .btn-modal-close {
+	opacity: .4; padding: 4px; margin: -2px -4px 0 0; border-radius: 7px;
+	transition: opacity .15s, background .15s;
+}
+body.ob-page .modal-header .close:hover { opacity: 1; background: var(--ob-rule-soft); }
+body.ob-page .modal-body { padding: 18px 22px 22px; font-size: 14.5px; line-height: 1.62; color: var(--ob-ink-soft); }
+body.ob-page .modal-body b, body.ob-page .modal-body strong { color: var(--ob-ink); }
+body.ob-page .modal-footer { padding: 0 22px 20px; border: 0; gap: 8px; }
+body.ob-page .modal-footer .btn {
+	padding: 8px 16px; font-size: 13.5px; font-weight: 700; border-radius: var(--ob-radius-sm);
+}
+body.ob-page .modal-footer .btn-primary { background: var(--ob-accent); border-color: var(--ob-accent); }
+body.ob-page .modal-footer .btn-primary:hover { background: var(--ob-accent-dark); border-color: var(--ob-accent-dark); }
+
+/* No accent rule and no entrance animation. The portal's msgprint markup carries no
+   `.indicator`, so a coloured edge would have to be one fixed colour for every dialog --
+   which made "Saved" look identical to a validation failure. The message itself says
+   what happened; the popup just holds it. */
+body.ob-page .modal-body .msgprint { margin: 0; }
+body.ob-page .modal-footer.hidden { display: none !important; }
+
+/* One orchestrated entrance rather than scattered micro-animations. */
+.ob-hero, .ob-note, .ob-card { animation: ob-rise .5s cubic-bezier(.22,.8,.3,1) backwards; }
+.ob-note { animation-delay: .05s; }
+.ob-card:nth-of-type(1) { animation-delay: .10s; }
+.ob-card:nth-of-type(2) { animation-delay: .16s; }
+.ob-card:nth-of-type(3) { animation-delay: .22s; }
+@keyframes ob-rise { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+/* Still used by the date picker popover, which does need to feel attached to its input. */
+@keyframes ob-pop { from { opacity: 0; transform: translateY(-10px) scale(.985); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+	.ob-hero, .ob-note, .ob-card, .ob-cal { animation: none; }
+	.ob-progress-bar span { transition: none; }
+}
+</style>
+
+<script>
+frappe.ready(() => {
+	const $ = (s, r = document) => r.querySelector(s);
+	const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+
+	// Frappe appends dialogs to <body>, so the only way to reach them from page CSS is
+	// a body-level hook. Scoped to this class so Desk dialogs stay untouched.
+	document.body.classList.add("ob-page");
+
+	const form = $("#ob-form");
+	if (!form) return;
+
+	/* ---- reading the form ------------------------------------------------- */
+
+	const field_value = (el) => {
+		if (el.classList.contains("ob-date")) {
+			// The box shows dd/mm/yyyy for the reader; the server always gets ISO.
+			return el.dataset.iso || "";
+		}
+		if (el.type === "checkbox") return el.checked ? 1 : 0;
+		return el.value;
+	};
+
+	// A Phone is two controls and one value. The dialling code has to travel with the
+	// number or the server rejects it outright -- it parses with no default region.
+	//
+	// Joined with a HYPHEN, and with the number stripped to digits, because that is the
+	// only shape the Desk's own Phone control can read back: it splits on "-" and wants
+	// exactly two parts, otherwise it re-prepends the dialling code and HR sees
+	// "+91-+91 9876543210". The server normalises this too -- see
+	// validators.normalise_phone -- so this is belt and braces, not the only guard.
+	const phone_value = (wrap) => {
+		const number = (wrap.querySelector(".ob-phone-number").value || "").replace(/\D/g, "");
+		if (!number) return "";
+		const cc = wrap.querySelector(".ob-phone-cc").value || "";
+		return `${cc}-${number}`;
+	};
+
+	const collect = () => {
+		const values = {};
+
+		$$(".ob-phone", form).forEach((wrap) => {
+			const input = wrap.querySelector(".ob-phone-number");
+			if (!input.disabled) values[input.name] = phone_value(wrap);
+		});
+
+		$$("[name]", form).forEach((el) => {
+			if (el.disabled || el.classList.contains("ob-phone-number")) return;
+			values[el.name] = field_value(el);
+		});
+
+		return values;
+	};
+
+	// Repeating sections post the complete list they are showing, so a removed row
+	// disappears server-side without needing any row identity to match on.
+	const collect_tables = () => {
+		const tables = {};
+		$$(".ob-table", form).forEach((section) => {
+			if (!section.querySelector(".ob-row-add")) return; // read-only section
+			tables[section.dataset.table] = $$(".ob-row", section)
+				.filter((row) => !row.closest("template"))
+				.map((row) => {
+					const out = {};
+					$$("[data-col]", row).forEach((el) => {
+						out[el.dataset.col] = field_value(el);
+					});
+					return out;
+				});
+		});
+		return tables;
+	};
+
+	const payload = () => ({ values: collect(), tables: collect_tables() });
+
+	/* ---- what is still outstanding ----------------------------------------
+	   Computed from the live DOM rather than the page's server-rendered list, so it
+	   reflects what the applicant has typed since the page loaded. */
+
+	const label_of = (el) => {
+		const holder = el.closest(".ob-field") || el.closest(".ob-table");
+		const label = holder && holder.querySelector(".ob-label, .ob-h2");
+		return label ? label.textContent.replace("*", "").trim() : "";
+	};
+
+	const compute_missing = () => {
+		const items = [];
+
+		$$(".ob-card > .ob-grid > .ob-field", form).forEach((f) => {
+			if (!f.querySelector(".ob-star")) return;
+			const el = f.querySelector("[name]");
+			if (!el || el.disabled) return;
+			const phone = f.querySelector(".ob-phone");
+			const filled = phone ? phone_value(phone) : field_value(el);
+			if (!filled) items.push(label_of(el));
+		});
+
+		$$(".ob-table", form).forEach((section) => {
+			if (!section.querySelector(".ob-h2 .ob-star")) return;
+			const rows = $$(".ob-row", section).filter((r) => !r.closest("template"));
+			if (!rows.length) items.push(section.querySelector(".ob-h2").textContent.replace("*", "").trim());
+		});
+
+		$$(".ob-doc").forEach((doc) => {
+			if (!doc.querySelector(".ob-doc-name .ob-star")) return;
+			if (!doc.classList.contains("is-done")) items.push(doc.dataset.documentType);
+		});
+
+		return items.filter(Boolean);
+	};
+
+	const render_missing = (items) => {
+		items = items || [];
+		$("#ob-missing-list").innerHTML = items
+			.map((i) => `<li>${frappe.utils.escape_html(i)}</li>`).join("");
+		$("#ob-missing").classList.toggle("is-hidden", !items.length);
+	};
+
+	// Progress and the outstanding list are two views of one answer, so they are always
+	// recomputed together -- a document could otherwise tick green while the bar stalls.
+	const refresh_state = () => {
+		const items = compute_missing();
+		render_missing(items);
+
+		const bar = $(".ob-progress");
+		if (!bar) return items;
+
+		const required = Number(bar.dataset.required || 0);
+		const done = Math.max(0, required - items.length);
+		const fill = $("#ob-progress-fill");
+		const count = $("#ob-done");
+		if (fill) fill.style.width = `${required ? Math.round((done * 100) / required) : 100}%`;
+		if (count) count.textContent = done;
+		return items;
+	};
+
+	form.addEventListener("input", refresh_state);
+	form.addEventListener("change", refresh_state);
+
+	// Paint the server's figure once on load. The bar starts at zero in CSS, so this is
+	// what fills it -- and the existing width transition turns that into the bar growing
+	// to its position rather than a jump.
+	(() => {
+		const fill = $("#ob-progress-fill");
+		if (fill) fill.style.width = `${Number(fill.dataset.percent || 0)}%`;
+	})();
+
+	/* ---- date picker -----------------------------------------------------
+	   Replaces <input type="date">. The native panel is unstyleable, and it opens on
+	   the current month -- so entering a 1995 date of birth means paging back hundreds
+	   of months. A year dropdown makes that one click. */
+	const MONTHS = [
+		__("January"), __("February"), __("March"), __("April"), __("May"), __("June"),
+		__("July"), __("August"), __("September"), __("October"), __("November"), __("December"),
+	];
+	const DOW = [__("Su"), __("Mo"), __("Tu"), __("We"), __("Th"), __("Fr"), __("Sa")];
+	const iso = (d) =>
+		`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+	const human = (d) =>
+		`${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+
+	let open_cal = null;
+	const close_cal = () => { open_cal && open_cal.remove(); open_cal = null; };
+
+	document.addEventListener("click", (e) => {
+		if (open_cal && !open_cal.contains(e.target) && !e.target.classList.contains("ob-date")) close_cal();
+	});
+	document.addEventListener("keydown", (e) => e.key === "Escape" && close_cal());
+
+	const build_cal = (input) => {
+		close_cal();
+		const today = new Date();
+		const selected = input.dataset.iso ? new Date(input.dataset.iso + "T00:00:00") : null;
+		let view = selected || new Date(today.getFullYear() - 25, today.getMonth(), 1);
+
+		const cal = document.createElement("div");
+		cal.className = "ob-cal";
+		input.parentNode.appendChild(cal);
+		open_cal = cal;
+
+		const commit = (d) => {
+			input.dataset.iso = iso(d);
+			input.value = human(d);
+			close_cal();
+			refresh_state();
+		};
+
+		const render = () => {
+			const y = view.getFullYear(), m = view.getMonth();
+			const first = new Date(y, m, 1).getDay();
+			const days = new Date(y, m + 1, 0).getDate();
+			const prev = new Date(y, m, 0).getDate();
+
+			const years = [];
+			for (let i = today.getFullYear() + 5; i >= 1940; i--) years.push(i);
+
+			cal.innerHTML = `
+				<div class="ob-cal-head">
+					<button type="button" class="ob-nav" data-step="-1" aria-label="${__("Previous month")}">‹</button>
+					<select class="ob-cal-m" aria-label="${__("Month")}">
+						${MONTHS.map((n, i) => `<option value="${i}" ${i === m ? "selected" : ""}>${n}</option>`).join("")}
+					</select>
+					<select class="ob-cal-y" aria-label="${__("Year")}">
+						${years.map((n) => `<option value="${n}" ${n === y ? "selected" : ""}>${n}</option>`).join("")}
+					</select>
+					<button type="button" class="ob-nav" data-step="1" aria-label="${__("Next month")}">›</button>
+				</div>
+				<div class="ob-cal-grid">
+					${DOW.map((d) => `<div class="ob-cal-dow">${d}</div>`).join("")}
+					${Array.from({ length: first }, (_, i) =>
+						`<button type="button" class="ob-cal-day is-muted" data-off="-1" data-d="${prev - first + i + 1}">${prev - first + i + 1}</button>`).join("")}
+					${Array.from({ length: days }, (_, i) => {
+						const n = i + 1;
+						const is_today = y === today.getFullYear() && m === today.getMonth() && n === today.getDate();
+						const is_on = selected && y === selected.getFullYear() && m === selected.getMonth() && n === selected.getDate();
+						return `<button type="button" class="ob-cal-day ${is_today ? "is-today" : ""} ${is_on ? "is-on" : ""}" data-off="0" data-d="${n}">${n}</button>`;
+					}).join("")}
+					${Array.from({ length: (7 - ((first + days) % 7)) % 7 }, (_, i) =>
+						`<button type="button" class="ob-cal-day is-muted" data-off="1" data-d="${i + 1}">${i + 1}</button>`).join("")}
+				</div>
+				<div class="ob-cal-foot">
+					<button type="button" data-act="clear">${__("Clear")}</button>
+					<button type="button" data-act="today">${__("Today")}</button>
+				</div>`;
+
+			cal.querySelectorAll(".ob-nav").forEach((b) => {
+				b.onclick = () => { view = new Date(y, m + Number(b.dataset.step), 1); render(); };
+			});
+			cal.querySelector(".ob-cal-m").onchange = (e) => { view = new Date(y, Number(e.target.value), 1); render(); };
+			cal.querySelector(".ob-cal-y").onchange = (e) => { view = new Date(Number(e.target.value), m, 1); render(); };
+			cal.querySelectorAll(".ob-cal-day").forEach((b) => {
+				b.onclick = () => commit(new Date(y, m + Number(b.dataset.off), Number(b.dataset.d)));
+			});
+			cal.querySelector('[data-act="clear"]').onclick = () => {
+				input.dataset.iso = ""; input.value = ""; close_cal(); refresh_state();
+			};
+			cal.querySelector('[data-act="today"]').onclick = () => commit(new Date());
+		};
+
+		render();
+	};
+
+	// Called again for rows added after load, so a new entry's dates behave like the
+	// ones that came with the page.
+	const bind_dates = (root) => {
+		$$(".ob-date", root).forEach((input) => {
+			if (input.disabled || input.dataset.bound) return;
+			input.dataset.bound = "1";
+			input.addEventListener("focus", () => build_cal(input));
+			input.addEventListener("click", (e) => { e.stopPropagation(); build_cal(input); });
+
+			// Typing a date is often faster than clicking one; accept dd/mm/yyyy too.
+			input.addEventListener("blur", () => {
+				setTimeout(() => {
+					const m = (input.value || "").match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+					if (!m) {
+						if (!input.value.trim()) input.dataset.iso = "";
+						else if (input.dataset.iso) input.value = human(new Date(input.dataset.iso + "T00:00:00"));
+						return;
+					}
+					const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+					if (isNaN(d)) return;
+					input.dataset.iso = iso(d);
+					input.value = human(d);
+					refresh_state();
+				}, 150);
+			});
+		});
+	};
+	bind_dates(form);
+
+	/* ---- repeating rows ---------------------------------------------------- */
+
+	/* "Current employer" and "to date" are two answers to one question, and the server
+	   refuses a row that gives both. The Desk grid hides To Date via `depends_on`; this
+	   is the portal's equivalent, because depends_on is a Desk-only mechanism and the
+	   applicant would otherwise fill in a contradiction and only hear about it on save. */
+	const sync_current_employer = (row) => {
+		const flag = row.querySelector('[data-col="is_current_employer"]');
+		const to_date = row.querySelector('[data-col="to_date"]');
+		if (!flag || !to_date) return;
+
+		const still_there = flag.checked;
+		if (still_there) {
+			to_date.value = "";
+			to_date.dataset.iso = "";
+		}
+		to_date.disabled = still_there || flag.disabled;
+		const wrap = to_date.closest(".ob-field");
+		if (wrap) wrap.classList.toggle("is-hidden", still_there);
+	};
+
+	const sync_rows = (section) => {
+		$$(".ob-row", section)
+			.filter((r) => !r.closest("template"))
+			.forEach(sync_current_employer);
+	};
+
+	$$(".ob-table", form).forEach((section) => {
+		const add = section.querySelector(".ob-row-add");
+		const holder = section.querySelector(".ob-rows");
+		const template = section.querySelector(".ob-row-template");
+
+		if (add && holder && template) {
+			add.onclick = () => {
+				const row = template.content.firstElementChild.cloneNode(true);
+				holder.appendChild(row);
+				bind_dates(row);
+				sync_current_employer(row);
+				refresh_state();
+				const first = row.querySelector("input:not([type=checkbox]), select, textarea");
+				first && first.focus();
+			};
+		}
+
+		// Delegated: rows added after load need removal too.
+		section.addEventListener("click", (e) => {
+			const btn = e.target.closest(".ob-row-remove");
+			if (!btn) return;
+			btn.closest(".ob-row").remove();
+			refresh_state();
+		});
+
+		// Delegated for the same reason.
+		section.addEventListener("change", (e) => {
+			const flag = e.target.closest('[data-col="is_current_employer"]');
+			if (flag) sync_current_employer(flag.closest(".ob-row"));
+		});
+
+		sync_rows(section);
+	});
+
+	/* ---- saving and submitting --------------------------------------------- */
+
+	const call = (method, args) =>
+		frappe.call({ method: `possibleworks.onboarding.portal.${method}`, args });
+
+	const busy = (btn, on, label) => {
+		if (!btn) return;
+		btn.disabled = on;
+		btn.textContent = on ? label : btn.dataset.label;
+	};
+
+	["ob-save", "ob-submit"].forEach((id) => {
+		const b = $("#" + id);
+		if (b) b.dataset.label = b.textContent.trim();
+	});
+
+	const save = $("#ob-save");
+	save && (save.onclick = () => {
+		busy(save, true, __("Saving…"));
+		call("portal_save", payload())
+			.then((r) => {
+				render_missing(r.message && r.message.missing);
+				frappe.show_alert({ message: __("Saved"), indicator: "blue" });
+			})
+			.always(() => busy(save, false));
+	});
+
+	const submit = $("#ob-submit");
+	submit && (submit.onclick = () => {
+		// Completeness FIRST. Asking someone to tick a confirmation, then telling them
+		// eight fields are blank, makes the tick look like the problem -- and hides the
+		// list they actually needed.
+		const outstanding = refresh_state();
+		if (outstanding.length) {
+			frappe.msgprint({
+				title: __("Not Finished Yet"),
+				message:
+					__("Please complete these before submitting:") +
+					"<ul><li>" +
+					outstanding.map((i) => frappe.utils.escape_html(i)).join("</li><li>") +
+					"</li></ul>",
+				indicator: "orange",
+			});
+			$("#ob-missing").scrollIntoView({ behavior: "smooth", block: "center" });
+			return;
+		}
+
+		const declaration = $("#ob-declaration");
+		if (declaration && !declaration.checked) {
+			frappe.msgprint({
+				message: __("Please tick the confirmation before submitting."),
+				indicator: "orange",
+			});
+			declaration.closest(".ob-card").scrollIntoView({ behavior: "smooth", block: "center" });
+			return;
+		}
+
+		busy(submit, true, __("Submitting…"));
+		call("portal_submit", Object.assign(payload(), { declaration_accepted: 1 }))
+			// A reload is right here and only here: the form becomes read-only, so there
+			// is nothing left in the page worth preserving.
+			.then(() => window.location.reload())
+			.always(() => busy(submit, false));
+	});
+
+	/* ---- documents ---------------------------------------------------------
+	   Uploading used to reload the page, which threw away every field typed since the
+	   last save. The endpoints return enough to patch the card in place instead. */
+
+	const doc_card = (document_type) =>
+		$$(".ob-doc").find((d) => d.dataset.documentType === document_type);
+
+	const sync_doc_card = (card) => {
+		if (!card) return;
+		const count = card.querySelectorAll(".ob-file").length;
+		card.classList.toggle("is-done", count > 0);
+
+		const drop = card.querySelector(".ob-drop");
+		if (!drop) return;
+		const multiple = card.dataset.allowMultiple === "1";
+		drop.classList.toggle("is-hidden", count > 0 && !multiple);
+
+		const main = drop.querySelector(".ob-drop-main");
+		if (main) main.textContent = count ? main.dataset.more : main.dataset.first;
+	};
+
+	const add_file_row = (card, file) => {
+		const holder = card.querySelector(".ob-files");
+		const row = document.createElement("div");
+		row.className = "ob-file";
+
+		const link = document.createElement("a");
+		link.href = file.file_url;
+		link.target = "_blank";
+		link.rel = "noopener";
+		link.textContent = file.file_name || file.file_url;
+
+		const remove = document.createElement("button");
+		remove.type = "button";
+		remove.className = "ob-remove";
+		remove.dataset.row = file.row_name;
+		remove.setAttribute("aria-label", __("Remove"));
+		remove.textContent = "×";
+
+		row.appendChild(link);
+		row.appendChild(remove);
+		holder.appendChild(row);
+	};
+
+	const apply_state = (state) => {
+		if (!state) return;
+		render_missing(state.missing);
+		if (!state.progress) return;
+		const fill = $("#ob-progress-fill");
+		const count = $("#ob-done");
+		if (fill) fill.style.width = `${state.progress.percent}%`;
+		if (count) count.textContent = state.progress.done;
+	};
+
+	// Uploads go through Frappe's own endpoint, always private.
+	const upload = (input, file) => {
+		if (!file) return;
+		const drop = input.closest(".ob-drop");
+		const main = drop && drop.querySelector(".ob-drop-main");
+		const previous = main && main.textContent;
+		if (main) main.textContent = __("Uploading…");
+
+		const data = new FormData();
+		data.append("file", file);
+		data.append("is_private", 1);
+		data.append("doctype", "Onboarding Applicant");
+		data.append("docname", "{{ doc.name if doc else '' }}");
+
+		fetch("/api/method/upload_file", {
+			method: "POST",
+			headers: { "X-Frappe-CSRF-Token": frappe.csrf_token },
+			body: data,
+		})
+			.then((r) => r.json())
+			.then((r) => {
+				if (!r.message) throw new Error("upload failed");
+				return call("portal_attach", {
+					document_type: input.dataset.documentType,
+					file_url: r.message.file_url,
+					// What they called it. Frappe renames a colliding file on disk, so
+					// the stored name is not necessarily the one they chose -- and the
+					// duplicate check needs the one they chose.
+					file_name: file.name,
+				});
+			})
+			.then((r) => {
+				// `r` is absent when frappe.call resolved on a server throw -- the card
+				// is then simply resynced from its own contents, which is correct.
+				const state = r && r.message;
+				const card = doc_card(input.dataset.documentType);
+				if (state && state.file && card) add_file_row(card, state.file);
+				sync_doc_card(card);
+				apply_state(state);
+			})
+			.catch(() => {
+				// A duplicate or a rejected file leaves the card exactly as it was; the
+				// server has already explained why in its own dialog.
+				if (main) main.textContent = previous;
+			})
+			.finally(() => {
+				// Without this, choosing the same file twice in a row fires no change
+				// event the second time and the page looks frozen.
+				input.value = "";
+			});
+	};
+
+	$$(".ob-upload", form).forEach((input) => {
+		input.onchange = () => upload(input, input.files[0]);
+
+		const drop = input.closest(".ob-drop");
+		if (!drop) return;
+		["dragenter", "dragover"].forEach((e) =>
+			drop.addEventListener(e, (ev) => { ev.preventDefault(); drop.classList.add("is-over"); }));
+		["dragleave", "drop"].forEach((e) =>
+			drop.addEventListener(e, () => drop.classList.remove("is-over")));
+		drop.addEventListener("drop", (ev) => {
+			ev.preventDefault();
+			upload(input, ev.dataTransfer.files[0]);
+		});
+	});
+
+	// Delegated, because file rows are added after load.
+	form.addEventListener("click", (e) => {
+		const btn = e.target.closest(".ob-remove");
+		if (!btn) return;
+		const card = btn.closest(".ob-doc");
+		btn.disabled = true;
+		call("portal_remove_document", { row_name: btn.dataset.row })
+			.then((r) => {
+				btn.closest(".ob-file").remove();
+				sync_doc_card(card);
+				apply_state(r.message);
+			})
+			.fail(() => { btn.disabled = false; });
+	});
+
+	/* ---- "same as current address" ---------------------------------------
+	   The server already copies the value on save, but without this the applicant
+	   sees a required Permanent Address sitting there empty and editable after
+	   ticking the box -- so they type into it, and their typing is then silently
+	   overwritten. Mirror it live and lock it instead. */
+	const same = $("#f-same_as_current_address");
+	if (same) {
+		const PAIRS = [
+			["current_address", "permanent_address"],
+			["current_accommodation_type", "permanent_accommodation_type"],
+		];
+
+		const mirror = () => {
+			const on = same.checked;
+			PAIRS.forEach(([from, to]) => {
+				const src = $("#f-" + from), dst = $("#f-" + to);
+				if (!dst) return;
+				if (on && src) dst.value = src.value;
+				dst.readOnly = on;
+				dst.disabled = on && dst.tagName === "SELECT";
+				const wrap = dst.closest(".ob-field");
+				if (wrap) wrap.classList.toggle("is-mirrored", on);
+			});
+			refresh_state();
+		};
+
+		same.addEventListener("change", mirror);
+		PAIRS.forEach(([from]) => {
+			const src = $("#f-" + from);
+			src && src.addEventListener("input", () => same.checked && mirror());
+		});
+		mirror();
+	}
+});
+</script>
+{% endblock %}

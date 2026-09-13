@@ -1,0 +1,111 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:asset_code",
+ "creation": "2026-08-25 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "entity",
+  "asset_type",
+  "column_break_1",
+  "asset_code",
+  "enabled"
+ ],
+ "fields": [
+  {
+   "fieldname": "entity",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Entity",
+   "options": "GVS\nGRIET\nGLWEC\nGRES\nGRCP\nMDRES\nNizam Deccan Sugars",
+   "reqd": 1
+  },
+  {
+   "fieldname": "asset_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Asset Type",
+   "options": "Vehicle\nLaptop\nDesktop",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The vehicle registration number or laptop/desktop asset tag - this is also the record's own ID, so it must be exact and unique.",
+   "fieldname": "asset_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Asset Code",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "description": "Disable to retire an asset (sold, scrapped, decommissioned) without deleting it - existing requests that reference it stay intact.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Enabled"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-25 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Finance",
+ "name": "MIS Master",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Finance Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Purchase Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "sort_field": "entity",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

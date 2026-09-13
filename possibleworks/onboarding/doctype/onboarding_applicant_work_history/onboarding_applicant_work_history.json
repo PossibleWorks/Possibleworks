@@ -1,0 +1,113 @@
+{
+ "actions": [],
+ "creation": "2026-08-14 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company_name",
+  "designation",
+  "from_date",
+  "to_date",
+  "is_current_employer",
+  "total_experience",
+  "salary",
+  "notice_period_days",
+  "address",
+  "contact",
+  "reason_for_leaving",
+  "relieving_letter"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "company_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Company"
+  },
+  {
+   "columns": 2,
+   "fieldname": "designation",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Designation"
+  },
+  {
+   "columns": 2,
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "From Date"
+  },
+  {
+   "columns": 2,
+   "depends_on": "eval:!doc.is_current_employer",
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "To Date"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_current_employer",
+   "fieldtype": "Check",
+   "label": "Current Employer"
+  },
+  {
+   "description": "Derived from the dates above.",
+   "fieldname": "total_experience",
+   "fieldtype": "Data",
+   "label": "Total Experience",
+   "read_only": 1
+  },
+  {
+   "fieldname": "salary",
+   "fieldtype": "Currency",
+   "label": "Salary",
+   "options": "Company:company:default_currency",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "notice_period_days",
+   "fieldtype": "Int",
+   "label": "Notice Period (Days)"
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Small Text",
+   "label": "Address"
+  },
+  {
+   "fieldname": "contact",
+   "fieldtype": "Data",
+   "label": "Contact"
+  },
+  {
+   "fieldname": "reason_for_leaving",
+   "fieldtype": "Small Text",
+   "label": "Reason for Leaving"
+  },
+  {
+   "description": "Upload as a private file.",
+   "fieldname": "relieving_letter",
+   "fieldtype": "Attach",
+   "label": "Relieving Letter",
+   "print_hide": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-14 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Onboarding",
+ "name": "Onboarding Applicant Work History",
+ "owner": "Administrator",
+ "permissions": [],
+ "quick_entry": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

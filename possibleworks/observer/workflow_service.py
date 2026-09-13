@@ -228,3 +228,69 @@ class WorkflowService:
         """
         workflow = WorkflowService.get_workflow_name(doctype)
         return workflow is not None
+
+@frappe.whitelist()
+def get_workflow_position(doctype: str, docname: str) -> Dict:
+    """Where a document sits in its workflow, and what may legitimately be done next.
+
+    Everything pw-server needs to route a card, in one call:
+      current_state     -- the workflow state field's value
+      is_initial_state  -- nothing transitions INTO this state, so a save here is not
+                           an event worth notifying anyone about
+      transitions       -- available from this state, WITH `condition` evaluated
+
+    Why not `frappe.model.workflow.get_transitions`: it also filters by the CALLING
+    user's roles. pw-server calls with an admin key on behalf of each recipient, so a
+    role filter here would answer for the admin, not the recipient. The role check
+    therefore stays with the caller, which already routes by each transition's
+    `allowed` role. The condition check is what could not be done caller-side -- it
+    needs the document and Frappe's own evaluator, and without it a branching state
+    (approve under a threshold, escalate over it) offers every branch at once.
+    """
+    from frappe.model.workflow import get_workflow_name, is_transition_condition_satisfied
+
+    workflow_name = get_workflow_name(doctype)
+    if not workflow_name:
+        return {"current_state": None, "is_initial_state": False, "transitions": []}
+
+    doc = frappe.get_doc(doctype, docname)
+    doc.check_permission("read")
+
+    workflow = frappe.get_cached_doc("Workflow", workflow_name)
+    current_state = doc.get(workflow.workflow_state_field)
+
+    transitions = []
+    for t in workflow.transitions:
+        if t.state != current_state:
+            continue
+        if not is_transition_condition_satisfied(t, doc):
+            continue
+        transitions.append({
+            "action": t.action,
+            "from_state": t.state,
+            "to_state": t.next_state,
+            "allowed_roles": [t.allowed] if t.allowed else [],
+            "allow_self_approval": t.allow_self_approval,
+        })
+
+    return {
+        "current_state": current_state,
+        # Computed over ALL transitions, not the filtered set: a state is initial only
+        # if nothing anywhere leads into it.
+        "is_initial_state": not any(t.next_state == current_state for t in workflow.transitions),
+        "transitions": transitions,
+        # How the document could have ARRIVED here. Frappe records only the resulting
+        # state -- `apply_workflow` ends with add_comment("Workflow", next_state.state)
+        # -- so the name of the action taken exists nowhere in the document's history and
+        # can only be recovered by matching the state it came from against the workflow.
+        # The caller knows that previous state (the tile it is retiring was raised for),
+        # so this lets it name the action exactly instead of guessing from the state name,
+        # which cannot tell "Escalate" from "Approve" when both land in an "Approv..."
+        # state. No condition is evaluated: a condition gates whether a transition MAY be
+        # taken, and by now it already has been.
+        "incoming_transitions": [
+            {"action": t.action, "from_state": t.state}
+            for t in workflow.transitions
+            if t.next_state == current_state
+        ],
+    }
