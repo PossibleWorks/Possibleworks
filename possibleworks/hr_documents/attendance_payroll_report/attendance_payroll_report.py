@@ -115,6 +115,7 @@ def daily_attendance_report_dispatch():
 		"Payroll Period",
 		filters={"start_date": ["<=", today], "end_date": [">=", today], "docstatus": ["!=", 2]},
 		fields=["name", "company", "custom_last_auto_report_sent_till"],
+		order_by="company",
 	)
 
 	for period in periods:
@@ -138,7 +139,16 @@ def daily_attendance_report_dispatch():
 		if last_sent and last_sent >= end:
 			continue
 
-		send_attendance_exception_report(period.name, start, end)
+		try:
+			send_attendance_exception_report(period.name, start, end)
+		except Exception:
+			# One company's failure (e.g. no recipients configured yet, or a
+			# build/send error) must not stop the rest of today's dispatch --
+			# every other due Payroll Period still needs its own attempt.
+			frappe.log_error(
+				title=f"Attendance report dispatch: send failed for {period.name} ({period.company})",
+				message=frappe.get_traceback(with_context=True),
+			)
 
 
 # =============================================================================
