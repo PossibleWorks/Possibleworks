@@ -48,12 +48,15 @@ doctype_js = {
 	"Request for Quotation": "public/js/purchase_indent/request_for_quotation_form.js",
 }
 
-# Jinja methods exposed to print formats / templates (Employee letters)
+# Jinja methods exposed to print formats / templates (Employee letters, Notification
+# emails)
 jinja = {
 	"methods": [
 		"possibleworks.hr_documents.letters.utils.get_letter_context",
 		"possibleworks.hr_documents.letters.utils.get_employee_tenure_text",
 		"possibleworks.utils.print_assets.get_file_as_data_uri",
+		"possibleworks.finance.email_helpers.get_approve_link",
+		"possibleworks.finance.email_helpers.get_app_deep_link",
 	],
 }
 # NOTE: do NOT list a doctype here when the .js already lives in that doctype's own
