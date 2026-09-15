@@ -49,6 +49,7 @@ doctype_js = {
 	"Material Request": "public/js/purchase_indent/material_request_form.js",
 	"Purchase Order": "public/js/purchase_indent/purchase_order_form.js",
 	"Request for Quotation": "public/js/purchase_indent/request_for_quotation_form.js",
+	"Payroll Period": "public/js/payroll/payroll_period_attendance_report.js",
 }
 
 # Jinja methods exposed to print formats / templates (Employee letters)
@@ -169,7 +170,8 @@ scheduler_events = {
         ],
     },
     "daily": [
-        "possibleworks.observer.doctype.observer_event_log.observer_event_log.run_log_cleanup"
+        "possibleworks.observer.doctype.observer_event_log.observer_event_log.run_log_cleanup",
+        "possibleworks.hr_documents.attendance_payroll_report.attendance_payroll_report.daily_attendance_report_dispatch",
     ],
 }
 
