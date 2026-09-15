@@ -55,7 +55,6 @@ jinja = {
 		"possibleworks.hr_documents.letters.utils.get_letter_context",
 		"possibleworks.hr_documents.letters.utils.get_employee_tenure_text",
 		"possibleworks.utils.print_assets.get_file_as_data_uri",
-		"possibleworks.finance.email_helpers.get_approve_link",
 		"possibleworks.finance.email_helpers.get_app_deep_link",
 	],
 }
