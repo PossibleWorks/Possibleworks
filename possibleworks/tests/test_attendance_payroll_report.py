@@ -468,3 +468,59 @@ class TestAttendancePayrollReport(IntegrationTestCase):
 
 		daily_attendance_report_dispatch()
 		mock_send.assert_not_called()
+
+	@patch("possibleworks.hr_documents.attendance_payroll_report.attendance_payroll_report.frappe.sendmail")
+	@patch("possibleworks.hr_documents.attendance_payroll_report.attendance_payroll_report.nowdate")
+	def test_one_companys_missing_recipients_does_not_block_another_companys_send(
+		self, mock_nowdate, mock_sendmail
+	):
+		"""Regression test: send_attendance_exception_report's "no recipients"
+		throw used to escape daily_attendance_report_dispatch's loop entirely,
+		so one misconfigured company silently stopped every other due company
+		from getting its report that day. Company names are ordered (dispatch
+		sorts by company) so the misconfigured one is always attempted first."""
+		mock_nowdate.return_value = "2026-05-01"
+
+		bad_company = create_company("_Test Attendance Report Dispatch A Bad Co").name
+		frappe.delete_doc_if_exists("Payroll Period", "_Test Dispatch Bad Period", force=True)
+		frappe.get_doc(
+			{
+				"doctype": "Payroll Period",
+				"name": "_Test Dispatch Bad Period",
+				"company": bad_company,
+				"start_date": "2026-01-01",
+				"end_date": "2026-12-31",
+				"custom_payroll_type": "Monthly",
+				# custom_to_emails deliberately left blank
+			}
+		).insert()
+
+		good_company = create_company("_Test Attendance Report Dispatch B Good Co").name
+		frappe.delete_doc_if_exists("Payroll Period", "_Test Dispatch Good Period", force=True)
+		frappe.get_doc(
+			{
+				"doctype": "Payroll Period",
+				"name": "_Test Dispatch Good Period",
+				"company": good_company,
+				"start_date": "2026-01-01",
+				"end_date": "2026-12-31",
+				"custom_payroll_type": "Monthly",
+				"custom_to_emails": "payroll@example.com",
+			}
+		).insert()
+
+		daily_attendance_report_dispatch()  # must not raise
+
+		mock_sendmail.assert_called_once()
+		self.assertEqual(mock_sendmail.call_args.kwargs["recipients"], ["payroll@example.com"])
+		self.assertIsNone(
+			frappe.db.get_value("Payroll Period", "_Test Dispatch Bad Period", "custom_last_auto_report_sent_till")
+		)
+		self.assertEqual(
+			getdate(
+				frappe.db.get_value(
+					"Payroll Period", "_Test Dispatch Good Period", "custom_last_auto_report_sent_till"
+				)
+			),
+			getdate("2026-04-30"),
+		)
