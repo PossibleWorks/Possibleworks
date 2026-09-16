@@ -1,0 +1,21 @@
+name: Trigger frappe-stack deploy
+
+on:
+  push:
+    branches: [uat, prod]
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger and wait for possibleworks-frappe-infra
+        env:
+          GH_TOKEN: ${{ secrets.PW_DEPLOY_TRIGGER_TOKEN }}
+        run: |
+          gh workflow run deploy.yml -R PossibleWorks/possibleworks-frappe-infra \
+            -f environment=${{ github.ref_name }}
+          sleep 5  # let the run register before we look it up
+          run_id=$(gh run list -R PossibleWorks/possibleworks-frappe-infra \
+            --workflow deploy.yml -L 1 --json databaseId -q '.[0].databaseId')
+          echo "Deploy run: https://github.com/PossibleWorks/possibleworks-frappe-infra/actions/runs/$run_id"
+          gh run watch -R PossibleWorks/possibleworks-frappe-infra "$run_id" --exit-status
