@@ -7,6 +7,9 @@ app_license = "MIT"
 app_logo_url = "/assets/possibleworks/images/possibleworks-logo.svg"
 
 
+import possibleworks.finance.erpnext_bug_fixes
+
+
 # Template resolution: our app first so overrides apply
 template_apps = ["possibleworks", "erpnext", "hrms", "frappe"]
 
