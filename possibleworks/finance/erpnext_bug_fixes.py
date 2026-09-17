@@ -12,38 +12,67 @@ import frappe.desk.reportview as reportview
 _original_build_match_conditions = reportview.build_match_conditions
 
 
-def _build_match_conditions_with_leading_space(doctype, user=None, as_condition=True):
-	"""Fix for a real ERPNext core bug (confirmed on erpnext 16.4.1) that
-	breaks Trial Balance, Balance Sheet, Profit and Loss, and Cash Flow for
-	any user who has a "Company" User Permission (auto-created whenever an
-	Employee record is linked to both a user and a company).
+def _build_match_conditions_wrapped(doctype, user=None, as_condition=True):
+	"""Fix for two real ERPNext core bugs (confirmed on erpnext 16.4.1), both
+	caused by callers naively splicing this function's raw return value into
+	a larger WHERE clause instead of treating it as a self-contained unit.
 
-	`erpnext.accounts.report.financial_statements.get_accounting_entries`
-	does:
+	`build_match_conditions` returns a condition representing "the current
+	user's permission restriction", meant to be AND-ed with the rest of a
+	query -- e.g. for a user with a Company User Permission (auto-created
+	whenever an Employee record is linked to both a user and a company), it
+	returns something like:
+
+		IFNULL(`tabGL Entry`.`company`,'')='' OR `tabGL Entry`.`company` IN ('Finance')
+
+	Note the *top-level* `OR` and the lack of a leading space or wrapping
+	parentheses -- the function assumes the caller adds both. Two core
+	reports don't:
+
+	1. `erpnext.accounts.report.financial_statements.get_accounting_entries`:
 
 		match_conditions = build_match_conditions(doctype)
 		if match_conditions:
 			query += "and" + match_conditions
 
-	`build_match_conditions` (this function, unpatched) returns the bare
-	condition with no leading space -- e.g. `coalesce(...)='' OR ... IN (...)`.
-	Concatenated with the literal `"and"` above, with no spaces on either
-	side, "and" + "coalesce(...)" fuses into the single invalid SQL token
-	`andcoalesce`, and MySQL/MariaDB rejects the query outright.
+	   With no leading space, "and" + "IFNULL(...)" fuses into the single
+	   invalid SQL token `andifnull`, and MySQL/MariaDB rejects the query
+	   outright -- breaks Trial Balance, Balance Sheet, Profit and Loss, and
+	   Cash Flow for any such user.
 
-	The correctly-spaced sibling function two lines above in the same core
-	file, `get_match_cond`, already does `" and " + cond` -- financial_
-	statements.py should have called that instead, but didn't, and core is
-	read-only here. Patching `build_match_conditions` to always carry its
-	own leading space is a safe, minimal fix: SQL is whitespace-insensitive,
-	so every other core caller that already prefixes its own connector
-	keyword is unaffected (a stray extra space is never a syntax error),
-	while this one buggy caller is fixed for free.
+	2. `erpnext.accounts.report.general_ledger.general_ledger.get_conditions`:
+
+		conditions.append(match_conditions)
+		...
+		return "and {}".format(" and ".join(conditions))
+
+	   This *is* correctly spaced, but never wraps match_conditions in
+	   parentheses. Since it contains a top-level OR, SQL's normal AND-binds-
+	   tighter-than-OR precedence means that OR silently applies to the
+	   *entire* preceding chain of conditions -- including this report's own
+	   party/party_type/date-range filters -- rather than being confined to
+	   just the permission check. For any such user, clicking "View Ledger"
+	   for one supplier/customer instead shows the company's *entire*,
+	   completely unfiltered General Ledger, with no error at all: the
+	   permission condition's OR ends up satisfied by ordinary company-scoped
+	   rows, which silently short-circuits every other filter ANDed before it.
+
+	Both are fixed at once by making this function always return its
+	condition already wrapped in parentheses with a leading space --
+	`" (IFNULL(...)='' OR ... IN (...))"`. That makes it safe to concatenate
+	after *any* connector keyword, spaced or not, and safe to AND together
+	with anything else regardless of what operators it contains internally.
+	SQL is whitespace- and parenthesis-insensitive for callers that already
+	handle this correctly (frappe.desk.reportview.get_match_cond, the
+	correctly-written sibling of this function, already does `" and (" + cond
+	+ ")"` -- both buggy reports above should have called that instead, but
+	didn't, and core is read-only here), so this is safe for every existing
+	caller, not just the two confirmed-broken ones.
 	"""
 	result = _original_build_match_conditions(doctype, user=user, as_condition=as_condition)
-	if as_condition and result and not result.startswith(" "):
-		return " " + result
+	if as_condition and result:
+		return f" ({result})"
 	return result
 
 
-reportview.build_match_conditions = _build_match_conditions_with_leading_space
+reportview.build_match_conditions = _build_match_conditions_wrapped
