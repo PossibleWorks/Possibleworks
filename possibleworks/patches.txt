@@ -16,3 +16,4 @@ possibleworks.patches.v1_5.create_employee_letters_tab
 possibleworks.patches.v1_5.seed_visa_letter_template
 possibleworks.patches.v1_5.disable_assignment_emails
 possibleworks.patches.v1_6.create_purchase_indent_link_fields
+possibleworks.patches.v1_7.create_item_payment_terms_field

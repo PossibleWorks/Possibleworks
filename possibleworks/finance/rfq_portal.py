@@ -119,6 +119,31 @@ def _ensure_uom_exists(uom):
 	return uom
 
 
+def _ensure_payment_term_exists(payment_term):
+	"""payment_terms on Supplier Quotation Item is a Link to Payment Term - a
+	supplier typing a term that isn't already a known Payment Term (e.g. "50%
+	Advance, 50% on Delivery") would otherwise fail link validation. Auto-create
+	a minimal record the first time a given term is used, same rationale as
+	_ensure_uom_exists/_ensure_item_exists above. An existing record with the
+	same name (Payment Term autonames off payment_term_name) is always reused
+	as-is, never overwritten.
+
+	When the supplier just types a plain number (e.g. "30"), that is credit
+	days, not a label - set due_date_based_on + credit_days accordingly so the
+	record actually carries that meaning instead of an empty Int field."""
+	payment_term = (payment_term or "").strip()
+	if not payment_term or frappe.db.exists("Payment Term", payment_term):
+		return payment_term
+
+	doc = {"doctype": "Payment Term", "payment_term_name": payment_term}
+	if payment_term.isdigit():
+		doc["due_date_based_on"] = "Day(s) after invoice date"
+		doc["credit_days"] = int(payment_term)
+
+	frappe.get_doc(doc).insert(ignore_permissions=True)
+	return payment_term
+
+
 def _ensure_item_exists(item_code, item_name, uom):
 	"""Suppliers can quote on an item that doesn't exist in the buyer's item
 	master at all ("full flexibility" per the guest form). item_code on
@@ -234,6 +259,7 @@ def get_quotation_link_context(token):
 				"price_list_rate": 0,
 				"discount_percentage": 0,
 				"tax_rate": None,
+				"payment_terms": None,
 			}
 			for item in rfq.items
 		]
@@ -350,9 +376,13 @@ def submit_quotation(token, items, terms=None):
 				"conversion_factor",
 				"warehouse",
 				"uom",
+				"payment_terms",
 			]:
 				args[field] = data.get(field)
 			args["lead_time_days"] = data.get("lead_time_days")
+
+
+			_ensure_payment_term_exists(args.get("payment_terms"))
 
 			# Rate is never trusted directly from the guest - only price_list_rate
 			# (raw) + discount_percentage are, and Supplier Quotation's own

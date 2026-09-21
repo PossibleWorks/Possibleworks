@@ -147,6 +147,7 @@ doc_events = {
         "on_trash": "possibleworks.observer.observer.handle_workflow_event",
         "on_discard": "possibleworks.observer.observer.handle_workflow_event",
         # "after_delete": "possibleworks.observer.observer.handle_workflow_event",
+        "validate": "possibleworks.finance.workflow_validations.validate_workflow_transition_early",
     },
 }
 
