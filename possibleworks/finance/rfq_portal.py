@@ -260,6 +260,7 @@ def get_quotation_link_context(token):
 				"discount_percentage": 0,
 				"tax_rate": None,
 				"payment_terms": None,
+				"make_model": None,
 			}
 			for item in rfq.items
 		]
@@ -377,6 +378,7 @@ def submit_quotation(token, items, terms=None):
 				"warehouse",
 				"uom",
 				"payment_terms",
+				"make_model",
 			]:
 				args[field] = data.get(field)
 			args["lead_time_days"] = data.get("lead_time_days")
