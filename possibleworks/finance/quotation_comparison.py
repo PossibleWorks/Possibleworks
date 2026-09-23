@@ -45,29 +45,40 @@ def get_due_tomorrow_rfqs():
 
 @frappe.whitelist()
 def get_rfqs_with_quotations():
-	"""RFQs (submitted, any due date) with at least one submitted Supplier
-	Quotation — for the manual "AI Recommendation" trigger. Unlike
-	get_due_tomorrow_rfqs this ignores schedule_date and pw_recommendation_sent
-	entirely: a user can re-run this on demand for any RFQ regardless of due
-	date or whether the automatic daily job already processed it."""
+	"""RFQs (submitted, any due date) with at least TWO distinct submitted
+	Supplier Quotations — for the manual "AI Recommendation" trigger. With
+	only one quotation there is nothing to compare it against, so the
+	recommendation would be trivial; this is a stronger bar than "was this RFQ
+	sent to more than one supplier", since a multi-supplier RFQ can still have
+	only one supplier actually respond. Unlike get_due_tomorrow_rfqs this
+	ignores schedule_date and pw_recommendation_sent entirely: a user can
+	re-run this on demand for any RFQ regardless of due date or whether the
+	automatic daily job already processed it."""
 	candidates = frappe.get_all(
 		"Request for Quotation",
 		filters={"docstatus": 1},
 		fields=["name", "company", "schedule_date"],
 		order_by="schedule_date desc",
 	)
+	if not candidates:
+		return {"rfqs": []}
 
-	qualifying = []
-	for rfq in candidates:
-		try:
-			has_quotation = frappe.db.exists(
-				"Supplier Quotation Item",
-				{"request_for_quotation": rfq.name, "docstatus": 1},
-			)
-			if has_quotation:
-				qualifying.append(rfq)
-		except Exception:
-			frappe.log_error(title=f"get_rfqs_with_quotations: failed checking {rfq.name}")
+	candidate_names = [rfq.name for rfq in candidates]
+	multi_quotation_rfqs = set(
+		frappe.db.sql(
+			"""
+			select request_for_quotation
+			from `tabSupplier Quotation Item`
+			where docstatus = 1 and request_for_quotation in %(names)s
+			group by request_for_quotation
+			having count(distinct parent) >= 2
+			""",
+			{"names": candidate_names},
+			pluck=True,
+		)
+	)
+
+	qualifying = [rfq for rfq in candidates if rfq.name in multi_quotation_rfqs]
 
 	return {"rfqs": qualifying}
 
@@ -130,6 +141,7 @@ def get_quotation_comparison_data(rfq):
 						"amount": item.amount,
 						"lead_time_days": item.lead_time_days,
 						"expected_delivery_date": item.expected_delivery_date,
+						"payment_terms": item.payment_terms,
 					}
 					for item in sq.items
 				],
