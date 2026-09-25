@@ -139,6 +139,10 @@ doc_events = {
 		"on_cancel": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 		"on_update_after_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 	},
+
+	"Purchase Invoice": {
+		"on_submit": "possibleworks.finance.purchase_indent_budget_status.update_from_purchase_invoice",
+	},
     "*": {
         "after_insert": "possibleworks.observer.observer.handle_workflow_event",
         "on_update": "possibleworks.observer.observer.handle_workflow_event",

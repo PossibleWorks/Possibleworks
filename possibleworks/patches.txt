@@ -18,5 +18,6 @@ possibleworks.patches.v1_5.disable_assignment_emails
 possibleworks.patches.v1_6.create_purchase_indent_link_fields
 possibleworks.patches.v1_7.create_item_payment_terms_field
 possibleworks.patches.v1_8.create_document_received_fields
+possibleworks.patches.v1_9.create_budget_status_fields
 possibleworks.patches.v1_10.create_dc_date_field
 possibleworks.patches.v1_11.create_supplier_quotation_make_model_field
