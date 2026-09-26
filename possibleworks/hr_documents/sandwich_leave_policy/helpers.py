@@ -88,8 +88,3 @@ def force_mark_absent(employee, date, company):
 	return attendance.name
 
 
-# No helper for Sandwich Leave Log inserts or reads: frappe.get_doc/get_all
-# are already exposed directly inside the Server Script sandbox, so a plain
-# doc insert / frappe.get_all call needs no adapter -- only reaching this
-# app's own Python (holiday_utils) and multi-step document writes
-# (cancel-with-side-effects, force-mark-absent's delete-then-recreate) do.

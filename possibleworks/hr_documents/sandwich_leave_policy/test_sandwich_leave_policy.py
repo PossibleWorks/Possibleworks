@@ -60,6 +60,13 @@ FRIDAY = _next_weekday(datetime.date(2027, 1, 1), 4)
 SATURDAY = add_days(FRIDAY, 1)
 SUNDAY = add_days(FRIDAY, 2)
 MONDAY = add_days(FRIDAY, 3)
+# A second, separate holiday two days after MONDAY -- Monday itself sits
+# between the two blocks as day_after of the first and day_before of the
+# second, exactly the real Oct 17-18/Oct 20 calendar pattern the cascade bug
+# was found against. Only used by the cascade-fix test; harmless to every
+# other test since it never falls within their (FRIDAY, MONDAY) query range.
+TUESDAY = add_days(MONDAY, 1)
+WEDNESDAY = add_days(MONDAY, 2)
 
 _SCRIPT_PATH = os.path.join(os.path.dirname(__file__), "server_script_reference.txt")
 _SCRIPT_START = '---- paste below this line into the Server Script\'s "Script" field ----'
@@ -111,6 +118,7 @@ class SandwichLeavePolicyTestCase(IntegrationTestCase):
 				"holidays": [
 					{"holiday_date": SATURDAY, "description": "Test Saturday"},
 					{"holiday_date": SUNDAY, "description": "Test Sunday"},
+					{"holiday_date": TUESDAY, "description": "Test second, separate holiday"},
 				],
 			}
 		).insert()
@@ -239,6 +247,22 @@ class SandwichLeavePolicyTestCase(IntegrationTestCase):
 		doc.submit()
 		return doc
 
+	def _mark_absent(self, employee, date):
+		"""A plain, unauthorized Absent -- no Leave Application behind it at
+		all. Distinct from _leave_application's auto-created Attendance."""
+		attendance = frappe.get_doc(
+			{
+				"doctype": "Attendance",
+				"employee": employee.name,
+				"attendance_date": date,
+				"status": "Absent",
+				"company": employee.company,
+			}
+		)
+		attendance.insert()
+		attendance.submit()
+		return attendance
+
 	def _run_policy(self, from_date, to_date, dry_run, user="Administrator"):
 		"""Execute the real Server Script text -- the exact string meant to be
 		pasted into Desk -- through the same safe_exec sandbox a live Server
@@ -349,6 +373,10 @@ class SandwichLeavePolicyTestCase(IntegrationTestCase):
 		self.assertEqual(block["holiday_dates"], [cstr(SATURDAY), cstr(SUNDAY)])
 		self.assertEqual(block["day_before"], cstr(FRIDAY))
 		self.assertEqual(block["day_after"], cstr(MONDAY))
+		# Full-day leave on both sides -- not a half-day trigger at all.
+		self.assertFalse(block["has_half_day_trigger"])
+		self.assertFalse(block["day_before_half_day"])
+		self.assertFalse(block["day_after_half_day"])
 
 	def test_adjacent_half_days_are_a_sandwich(self):
 		"""Friday Second Half (afternoon, touching the weekend) + Monday First Half
@@ -359,7 +387,12 @@ class SandwichLeavePolicyTestCase(IntegrationTestCase):
 
 		result = self._run_policy(FRIDAY, MONDAY, dry_run=1)
 
-		self._block_for(result, employee.name)  # raises if not found
+		block = self._block_for(result, employee.name)
+		# Flagged, not specially handled -- see helpers.py / server script notes
+		# on the open worked-half-day policy question.
+		self.assertTrue(block["has_half_day_trigger"])
+		self.assertTrue(block["day_before_half_day"])
+		self.assertTrue(block["day_after_half_day"])
 
 	def test_non_adjacent_half_days_are_not_a_sandwich(self):
 		"""Friday First Half (morning, worked in the afternoon) + Monday Second Half
@@ -390,6 +423,65 @@ class SandwichLeavePolicyTestCase(IntegrationTestCase):
 		result = self._run_policy(FRIDAY, MONDAY, dry_run=1)
 
 		self.assertFalse(any(b["employee"] == employee.name for b in result["blocks"]))
+
+	def test_unexplained_absent_on_both_sides_is_a_sandwich(self):
+		"""No Leave Application at all on either side -- just a plain,
+		unauthorized Absent. The policy exists to catch exactly this pattern
+		too, not only employees who filed paperwork for it."""
+		employee = self._new_employee()
+		self._mark_absent(employee, FRIDAY)
+		self._mark_absent(employee, MONDAY)
+
+		result = self._run_policy(FRIDAY, MONDAY, dry_run=1)
+
+		block = self._block_for(result, employee.name)
+		self.assertEqual(block["day_before_trigger"], "absent")
+		self.assertEqual(block["day_after_trigger"], "absent")
+		self.assertEqual(block["leave_applications"], [])
+
+	def test_mixed_leave_and_unexplained_absent_is_a_sandwich(self):
+		"""The two sides don't have to match: Friday is a real leave
+		application, Monday is a plain unauthorized Absent with no leave
+		application behind it -- either kind, independently, on each side."""
+		employee = self._new_employee()
+		leave = self._leave_application(employee, FRIDAY, FRIDAY)
+		self._mark_absent(employee, MONDAY)
+
+		result = self._run_policy(FRIDAY, MONDAY, dry_run=1)
+
+		block = self._block_for(result, employee.name)
+		self.assertEqual(block["day_before_trigger"], "leave")
+		self.assertEqual(block["day_after_trigger"], "absent")
+		self.assertEqual(block["leave_applications"], [leave.name])
+
+	def test_live_run_with_unexplained_absent_has_nothing_to_cancel(self):
+		"""Both boundary days were already a plain Absent (no leave
+		application) before the run -- there's nothing to cancel for either
+		side, but the block still applies and logs normally, with
+		cancelled_leave_application left blank on every row."""
+		employee = self._new_employee()
+		self._mark_absent(employee, FRIDAY)
+		self._mark_absent(employee, MONDAY)
+
+		result = self._run_policy(FRIDAY, MONDAY, dry_run=0)
+
+		self._block_for(result, employee.name)
+		for date in (FRIDAY, SATURDAY, SUNDAY, MONDAY):
+			status = frappe.db.get_value(
+				"Attendance",
+				{"employee": employee.name, "attendance_date": date, "docstatus": 1},
+				"status",
+			)
+			self.assertEqual(status, "Absent", f"expected Absent on {date}")
+
+		log_rows = frappe.get_all(
+			"Sandwich Leave Log",
+			filters={"employee": employee.name},
+			fields=["date", "cancelled_leave_application"],
+		)
+		self.assertEqual(len(log_rows), 4)
+		for row in log_rows:
+			self.assertFalse(row.cancelled_leave_application)
 
 	def test_dry_run_makes_no_writes(self):
 		employee = self._new_employee()
@@ -441,11 +533,98 @@ class SandwichLeavePolicyTestCase(IntegrationTestCase):
 		log_rows = frappe.get_all(
 			"Sandwich Leave Log",
 			filters={"employee": employee.name},
-			fields=["date", "is_holiday_date"],
+			fields=["date", "is_holiday_date", "is_half_day_trigger"],
 		)
 		self.assertEqual(len(log_rows), 4)
 		holiday_rows = {getdate(r.date) for r in log_rows if r.is_holiday_date}
 		self.assertEqual(holiday_rows, {SATURDAY, SUNDAY})
+		# Full-day leave on both sides -- persisted rows must NOT be flagged.
+		self.assertTrue(all(not row.is_half_day_trigger for row in log_rows))
+
+	def test_half_day_trigger_is_persisted_on_every_row_of_the_block(self):
+		"""is_half_day_trigger is set on the WHOLE block (every row sharing
+		this block_id), not just the specific boundary date that was a
+		half-day -- so it's findable via a filter on any of the 4 rows,
+		not just the one that happened to be half-day."""
+		employee = self._new_employee()
+		self._leave_application(employee, FRIDAY, FRIDAY, half_day_session="Second Half")
+		self._leave_application(employee, MONDAY, MONDAY, half_day_session="First Half")
+
+		self._run_policy(FRIDAY, MONDAY, dry_run=0)
+
+		log_rows = frappe.get_all(
+			"Sandwich Leave Log",
+			filters={"employee": employee.name},
+			fields=["date", "is_half_day_trigger"],
+		)
+		self.assertEqual(len(log_rows), 4)
+		self.assertTrue(all(row.is_half_day_trigger for row in log_rows))
+
+	def test_half_day_trigger_sends_a_separate_admin_alert_not_to_employee(self):
+		"""The half-day ambiguity alert is a SEPARATE email from the employee's
+		own notification: it goes only to Policy Configuration's admin
+		recipients, never to the employee or their manager, and only fires for
+		blocks where has_half_day_trigger is True (see the negative case in
+		test_full_day_block_sends_no_admin_alert)."""
+		admin_email = f"sandwich-admin-{frappe.generate_hash(length=6)}@example.com"
+		original_recipients = frappe.db.get_single_value("Policy Configuration", "sandwich_notification_recipients")
+		frappe.db.set_value(
+			"Policy Configuration", "Policy Configuration", "sandwich_notification_recipients", admin_email
+		)
+		self.addCleanup(
+			lambda: frappe.db.set_value(
+				"Policy Configuration", "Policy Configuration", "sandwich_notification_recipients", original_recipients
+			)
+		)
+
+		employee = self._new_employee()
+		self._leave_application(employee, FRIDAY, FRIDAY, half_day_session="Second Half")
+		self._leave_application(employee, MONDAY, MONDAY, half_day_session="First Half")
+
+		self._run_policy(FRIDAY, MONDAY, dry_run=0)
+
+		matches = frappe.get_all(
+			"Email Queue",
+			filters={"message": ["like", f"%half-day ambiguity for {employee.employee_name}%"]},
+			pluck="name",
+		)
+		self.assertEqual(len(matches), 1)
+
+		# This site BCCs every outgoing email to a fixed archive address, so
+		# assert inclusion/exclusion rather than an exact list -- what matters
+		# is the admin got it and the employee/manager did not.
+		recipients = frappe.get_all("Email Queue Recipient", filters={"parent": matches[0]}, pluck="recipient")
+		self.assertIn(admin_email, recipients)
+		self.assertNotIn(employee.user_id, recipients)
+		self.assertNotIn(employee.personal_email, recipients)
+
+	def test_full_day_block_sends_no_admin_alert(self):
+		"""Negative control for the above: a full-day (non-half-day) sandwich
+		must not trigger the half-day admin alert at all, even with admin
+		recipients configured."""
+		admin_email = f"sandwich-admin-{frappe.generate_hash(length=6)}@example.com"
+		original_recipients = frappe.db.get_single_value("Policy Configuration", "sandwich_notification_recipients")
+		frappe.db.set_value(
+			"Policy Configuration", "Policy Configuration", "sandwich_notification_recipients", admin_email
+		)
+		self.addCleanup(
+			lambda: frappe.db.set_value(
+				"Policy Configuration", "Policy Configuration", "sandwich_notification_recipients", original_recipients
+			)
+		)
+
+		employee = self._new_employee()
+		self._leave_application(employee, FRIDAY, FRIDAY)
+		self._leave_application(employee, MONDAY, MONDAY)
+
+		self._run_policy(FRIDAY, MONDAY, dry_run=0)
+
+		matches = frappe.get_all(
+			"Email Queue",
+			filters={"message": ["like", f"%half-day ambiguity for {employee.employee_name}%"]},
+			pluck="name",
+		)
+		self.assertEqual(matches, [])
 
 	def test_a_failed_block_is_reported_and_does_not_abort_the_run(self):
 		"""One employee's block failing partway through (simulated here inside
@@ -494,13 +673,14 @@ class SandwichLeavePolicyTestCase(IntegrationTestCase):
 		self._block_for(result, ok_employee.name)  # unaffected by the other employee's failure
 
 	def test_a_clean_rerun_finds_nothing_left_to_do(self):
-		"""Once a block is fully applied, its bridging leave applications are
-		cancelled -- so a plain re-run over the same range no longer even sees
-		this employee as a candidate (candidate lookup only considers Approved,
-		docstatus=1 leave). That's a fine outcome (nothing left to double-charge),
-		but it means this scenario alone doesn't exercise the Sandwich Leave Log
-		skip path -- see test_partially_processed_block_is_skipped_on_rerun for
-		the scenario that actually does."""
+		"""Once a block is fully applied, Friday/Monday become Attendance =
+		Absent -- but tagged custom_sandwich_policy_applied=1, which
+		resolve_boundary now deliberately excludes from counting as a fresh
+		trigger (the cascade fix: a sandwich-created Absent must never look
+		like a genuine new one). So a second run over the same range doesn't
+		even see this employee as a real candidate for THIS block -- no
+		blocks, no skipped_already_processed entry, nothing -- rather than
+		relying on the idempotency log to catch a spurious re-detection."""
 		employee = self._new_employee()
 		self._leave_application(employee, FRIDAY, FRIDAY)
 		self._leave_application(employee, MONDAY, MONDAY)
@@ -553,6 +733,52 @@ class SandwichLeavePolicyTestCase(IntegrationTestCase):
 		)
 		# Still just the one pre-seeded log row -- no new rows added for this block.
 		self.assertEqual(frappe.db.count("Sandwich Leave Log", {"employee": employee.name}), 1)
+
+	def test_cascade_fix_one_blocks_leftover_absence_does_not_trigger_another(self):
+		"""Reproduces the real cascade found against the live Oct 17-18/Oct 20
+		calendar: Block A (Sat/Sun) genuinely sandwiched via real leave on
+		Friday and Monday. Block B (Tuesday, a separate holiday) sits right
+		after, sharing Monday as its own day_before. Wednesday is given a
+		real, independent Absent, unrelated to Block A -- if the cascade
+		bug were still present, Block B would spuriously qualify once
+		Block A's own processing turns Monday into an Absent record, and
+		Wednesday's real leave would get swept into a false-positive
+		application. With the fix, Monday's sandwich-created Absent
+		(custom_sandwich_policy_applied=1) is excluded from counting as a
+		trigger, so Block B must never appear at all -- not applied, and
+		not even skipped_already_processed, since it should never resolve
+		as a candidate block in the first place."""
+		employee = self._new_employee()
+		self._leave_application(employee, FRIDAY, FRIDAY)
+		self._leave_application(employee, MONDAY, MONDAY)
+		self._mark_absent(employee, WEDNESDAY)  # genuine, independent of Block A
+
+		result = self._run_policy(FRIDAY, WEDNESDAY, dry_run=0)
+
+		# Block A applied correctly.
+		block_a = self._block_for(result, employee.name)
+		self.assertEqual(block_a["holiday_dates"], [cstr(SATURDAY), cstr(SUNDAY)])
+
+		# Block B (Tuesday) must not appear anywhere -- not as an applied
+		# block, and not even as a spuriously-detected-then-skipped one.
+		self.assertEqual(
+			len([b for b in result["blocks"] if b["employee"] == employee.name]),
+			1,
+			"only Block A should have been detected/applied for this employee",
+		)
+		self.assertFalse(any(s["employee"] == employee.name for s in result["skipped_already_processed"]))
+
+		# Tuesday (the actual holiday of Block B) was never touched by the
+		# policy at all -- no Sandwich Leave Log row for it.
+		self.assertEqual(frappe.db.count("Sandwich Leave Log", {"employee": employee.name, "date": TUESDAY}), 0)
+		# Wednesday's real, independent Absent is left exactly as it was --
+		# not force-marked with the sandwich flag, since Block B never applied.
+		wed_flag = frappe.db.get_value(
+			"Attendance",
+			{"employee": employee.name, "attendance_date": WEDNESDAY, "docstatus": 1},
+			"custom_sandwich_policy_applied",
+		)
+		self.assertFalse(wed_flag)
 
 	def test_disabled_policy_is_a_no_op(self):
 		frappe.db.set_value("Policy Configuration", "Policy Configuration", "enable_sandwich_leave_policy", 0)

@@ -8,6 +8,7 @@
   "employee_name",
   "date",
   "is_holiday_date",
+  "is_half_day_trigger",
   "column_break_meta",
   "block_id",
   "leave_type",
@@ -55,6 +56,15 @@
    "read_only": 1,
    "in_list_view": 1,
    "description": "Checked for the holiday/weekend gap dates (Sat/Sun) that native payroll can never see on its own. Unchecked for the bridging leave dates (e.g. Fri/Mon), which already reduce payment_days natively once marked Absent -- the Salary Slip hook only sums checked rows."
+  },
+  {
+   "fieldname": "is_half_day_trigger",
+   "fieldtype": "Check",
+   "label": "Half-Day Trigger",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Checked on the whole block (every row sharing this block's block_id) when the boundary leave application on either side was a half-day leave, not a full day. Current policy still marks the full boundary day Absent either way -- this only flags the case for review, it does not change what got applied. See the separate admin alert email sent at the time, and helpers.py's force_mark_absent docstring, for the open question of whether the worked half should have stayed paid."
   },
   {
    "fieldname": "column_break_meta",

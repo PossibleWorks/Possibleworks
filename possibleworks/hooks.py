@@ -231,4 +231,10 @@ fixtures = [
         "doctype": "Letter Head",
         "filters": [["name", "in", ["Ganges Valley School"]]],
     },
+    # Role *definitions* only -- never export "Has Role" assignments here, those are
+    # per-user/per-site data and must be granted manually via the User form on each site.
+    {
+        "doctype": "Role",
+        "filters": [["name", "in", ["Attendance Sync Admin"]]],
+    },
 ]
