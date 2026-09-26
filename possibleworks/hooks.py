@@ -139,7 +139,15 @@ doc_events = {
 		"on_cancel": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 		"on_update_after_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 	},
-
+	# Reduces payment_days for the Sandwich Leave Policy's holiday-only gap days (the
+	# bridging leave dates already reduce payment_days natively once marked Absent, so
+	# this only needs to account for the holiday dates native payroll can never see).
+	# No-op on every site until Policy Configuration.enable_sandwich_leave_policy is on
+	# and Sandwich Leave Log actually has rows for the employee/period -- see
+	# hr_documents/sandwich_leave_policy/payroll.py for the guard.
+	"Salary Slip": {
+		"validate": "possibleworks.hr_documents.sandwich_leave_policy.payroll.apply_sandwich_payment_days_adjustment",
+	},
 	"Purchase Invoice": {
 		"on_submit": "possibleworks.finance.purchase_indent_budget_status.update_from_purchase_invoice",
 	},
@@ -214,7 +222,8 @@ fixtures = [
             "AI Document Queue",
 			"Policy Configuration",
             "Possibleworks Settings",
-            "Shift Location Zone"
+            "Shift Location Zone",
+            "Sandwich Eligible Leave Type",
         ]]],
     },
     # Custom Print Formats + their Letter Head branding
@@ -230,5 +239,11 @@ fixtures = [
     {
         "doctype": "Letter Head",
         "filters": [["name", "in", ["Ganges Valley School"]]],
+    },
+    # Role *definitions* only -- never export "Has Role" assignments here, those are
+    # per-user/per-site data and must be granted manually via the User form on each site.
+    {
+        "doctype": "Role",
+        "filters": [["name", "in", ["Attendance Sync Admin"]]],
     },
 ]

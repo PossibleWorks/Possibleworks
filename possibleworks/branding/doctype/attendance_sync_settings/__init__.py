@@ -1,0 +1,1 @@
+from .attendance_sync_settings import AttendanceSyncSettings
