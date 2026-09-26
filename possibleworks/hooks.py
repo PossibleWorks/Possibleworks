@@ -7,6 +7,9 @@ app_license = "MIT"
 app_logo_url = "/assets/possibleworks/images/possibleworks-logo.svg"
 
 
+import possibleworks.finance.erpnext_bug_fixes
+
+
 # Template resolution: our app first so overrides apply
 template_apps = ["possibleworks", "erpnext", "hrms", "frappe"]
 
@@ -52,12 +55,14 @@ doctype_js = {
 	"Payroll Period": "public/js/payroll/payroll_period_attendance_report.js",
 }
 
-# Jinja methods exposed to print formats / templates (Employee letters)
+# Jinja methods exposed to print formats / templates (Employee letters, Notification
+# emails)
 jinja = {
 	"methods": [
 		"possibleworks.hr_documents.letters.utils.get_letter_context",
 		"possibleworks.hr_documents.letters.utils.get_employee_tenure_text",
 		"possibleworks.utils.print_assets.get_file_as_data_uri",
+		"possibleworks.finance.email_helpers.get_app_deep_link",
 	],
 }
 # NOTE: do NOT list a doctype here when the .js already lives in that doctype's own
@@ -143,6 +148,9 @@ doc_events = {
 	"Salary Slip": {
 		"validate": "possibleworks.hr_documents.sandwich_leave_policy.payroll.apply_sandwich_payment_days_adjustment",
 	},
+	"Purchase Invoice": {
+		"on_submit": "possibleworks.finance.purchase_indent_budget_status.update_from_purchase_invoice",
+	},
     "*": {
         "after_insert": "possibleworks.observer.observer.handle_workflow_event",
         "on_update": "possibleworks.observer.observer.handle_workflow_event",
@@ -151,6 +159,7 @@ doc_events = {
         "on_trash": "possibleworks.observer.observer.handle_workflow_event",
         "on_discard": "possibleworks.observer.observer.handle_workflow_event",
         # "after_delete": "possibleworks.observer.observer.handle_workflow_event",
+        "validate": "possibleworks.finance.workflow_validations.validate_workflow_transition_early",
     },
 }
 

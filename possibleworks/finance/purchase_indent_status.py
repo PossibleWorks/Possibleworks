@@ -23,6 +23,10 @@ FULLY_ORDERED_THRESHOLD = 99.99
 TERMINAL_STATUSES = ("Stopped", "Cancelled")
 
 
+BUDGET_STATUS_APPROVED = "Approved"
+BUDGET_STATUS_NEVER_REGRESS_FROM = ("Completed",)
+
+
 def update_from_purchase_order(doc, method=None):
 	"""`doc_events` entry point for Purchase Order submit / cancel / update-after-submit."""
 	for indent in indents_referenced_by(doc):
@@ -75,12 +79,11 @@ def update_ordered_qty(purchase_indent):
 
 	per_ordered = flt(ordered_total / requested_total * 100, 2) if requested_total else 0.0
 
-	frappe.db.set_value(
-		"Purchase Indent",
-		purchase_indent,
-		{"per_ordered": per_ordered, "status": resolve_status(indent, per_ordered)},
-		update_modified=False,
-	)
+	updates = {"per_ordered": per_ordered, "status": resolve_status(indent, per_ordered)}
+	if indent.budget_status not in BUDGET_STATUS_NEVER_REGRESS_FROM:
+		updates["budget_status"] = BUDGET_STATUS_APPROVED
+
+	frappe.db.set_value("Purchase Indent", purchase_indent, updates, update_modified=False)
 
 
 def resolve_status(indent, per_ordered):
