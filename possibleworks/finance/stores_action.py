@@ -30,6 +30,7 @@ from frappe.query_builder.functions import Sum
 from frappe.utils import flt, nowdate, nowtime
 
 MATERIAL_ISSUE = "Material Issue"
+MATERIAL_RECEIPT = "Material Receipt"
 
 
 def _consumed_stock_qty(child_doctype, qty_field, material_request_item):
@@ -207,6 +208,95 @@ def make_material_issue(source_name, target_doc=None, args=None):
 					frappe.utils.get_link_to_form("Material Request", source.name)
 				),
 				title=_("No Stock to Issue"),
+			)
+
+		target.set_transfer_qty()
+		target.set_actual_qty()
+		target.calculate_rate_and_amount(raise_error_if_no_rate=False)
+
+	return get_mapped_doc(
+		"Material Request",
+		source_name,
+		{
+			"Material Request": {
+				"doctype": "Stock Entry",
+				"validation": {"docstatus": ["=", 1]},
+			},
+			"Material Request Item": {
+				"doctype": "Stock Entry Detail",
+				"field_map": {
+					"name": "material_request_item",
+					"parent": "material_request",
+					"uom": "uom",
+				},
+				"postprocess": update_item,
+				"condition": select_item,
+			},
+		},
+		target_doc,
+		postprocess,
+	)
+
+
+@frappe.whitelist()
+def make_material_receipt(source_name, target_doc=None, args=None):
+	"""Material Request -> Stock Entry (Material Receipt).
+
+	The Stores Manager's other option for a line stock cannot cover: receipt the
+	shortage straight into stock (e.g. it is already on hand elsewhere) instead of
+	raising a Purchase Indent for it. `args["qty_overrides"]` maps a Material Request
+	Item name to the quantity to receipt, in that row's UOM -- the card sends the same
+	shortage figure it offers `make_purchase_indent`, so a line is covered by one path
+	or the other, never silently by both.
+	"""
+	args = frappe.parse_json(args) if args else {}
+	qty_overrides = args.get("qty_overrides") or {}
+	filtered_children = args.get("filtered_children") or []
+
+	def receipt_qty(source_row):
+		"""How much to receipt for a row, in that row's UOM.
+
+		With no override this is the shortage -- what stock cannot presently cover --
+		the same figure `get_material_request_stock_position` reports as
+		`shortage_qty`, so the card and a direct call can never disagree.
+		"""
+		factor = flt(source_row.conversion_factor) or 1.0
+		if source_row.name in qty_overrides:
+			return flt(qty_overrides[source_row.name])
+		outstanding = _outstanding_stock_qty(source_row)
+		available = _available_stock_qty(source_row)
+		return max(outstanding - available, 0.0) / factor
+
+	def select_item(source_row):
+		if receipt_qty(source_row) <= 0:
+			return False
+		return source_row.name in filtered_children if filtered_children else True
+
+	def update_item(source_row, target_row, source_parent):
+		factor = flt(source_row.conversion_factor) or 1.0
+		target_row.qty = receipt_qty(source_row)
+		target_row.conversion_factor = factor
+		target_row.transfer_qty = target_row.qty * factor
+		target_row.s_warehouse = None
+		target_row.t_warehouse = source_row.warehouse
+
+	def postprocess(source, target):
+		target.purpose = MATERIAL_RECEIPT
+		target.stock_entry_type = MATERIAL_RECEIPT
+		target.from_warehouse = None
+		target.to_warehouse = source.set_warehouse
+
+		if not target.posting_date:
+			target.posting_date = nowdate()
+		if not target.posting_time:
+			target.posting_time = nowtime()
+
+		if not target.items:
+			frappe.throw(
+				_("Nothing on {0} needs to be received right now.").format(
+					frappe.utils.get_link_to_form("Material Request", source.name)
+				),
+				title=_("Nothing to Receive"),
 			)
 
 		target.set_transfer_qty()
