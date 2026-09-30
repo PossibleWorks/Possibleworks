@@ -129,6 +129,10 @@ doc_events = {
 	"Employee": {
 		"validate": "possibleworks.employee.block_status_change_with_active_reports",
 		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
+		# Runs after erpnext's own Employee.update_user_permissions (which fires first in
+		# the same on_update chain) -- see sync_company_user_permission for why that core
+		# method misses company transfers.
+		"on_update": "possibleworks.employee.sync_company_user_permission",
 	},
 	# Keeps a Purchase Indent's ordered_qty / % Ordered / status current. erpnext drives
 	# Material Request the same way, but through Purchase Order's own `status_updater`
