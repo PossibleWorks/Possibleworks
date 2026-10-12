@@ -136,6 +136,11 @@ doc_events = {
 	},
 
 	"Purchase Invoice": {
+		"before_validate": [
+			"possibleworks.finance.invoice_taxes.apply_tds_from_supplier",
+			"possibleworks.finance.invoice_taxes.validate_tds_rates",
+			"possibleworks.finance.invoice_taxes.validate_item_tax_templates",
+		],
 		"on_submit": "possibleworks.finance.purchase_indent_budget_status.update_from_purchase_invoice",
 	},
     "*": {
