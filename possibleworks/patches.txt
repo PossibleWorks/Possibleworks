@@ -21,3 +21,5 @@ possibleworks.patches.v1_8.create_document_received_fields
 possibleworks.patches.v1_9.create_budget_status_fields
 possibleworks.patches.v1_10.create_dc_date_field
 possibleworks.patches.v1_11.create_supplier_quotation_make_model_field
+possibleworks.patches.v1_12.create_email_template_finance_field
+possibleworks.patches.v1_13.create_item_warranty_field

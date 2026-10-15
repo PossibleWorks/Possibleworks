@@ -41,13 +41,20 @@ def get_starting_transitions(doctype, doc=None):
 	roles = frappe.get_roles()
 	doc_status_by_state = {s.state: s.doc_status for s in workflow.states}
 	doc_values = frappe._dict(frappe.parse_json(doc) or {})
+
+	def condition_holds(transition):
+		if not transition.condition:
+			return True
+		try:
+			return bool(
+				frappe.safe_eval(transition.condition, get_workflow_safe_globals(), {"doc": doc_values})
+			)
+		except Exception:
+			return True
+
 	available = [
 		t for t in workflow.transitions
-		if t.state == start_state and t.allowed in roles
-		and (
-			not t.condition
-			or frappe.safe_eval(t.condition, get_workflow_safe_globals(), {"doc": doc_values})
-		)
+		if t.state == start_state and t.allowed in roles and condition_holds(t)
 	]
 
 	# If the user can jump straight to a submitted state (e.g. an approver
