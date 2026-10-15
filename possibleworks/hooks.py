@@ -133,6 +133,17 @@ doc_events = {
 		"on_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 		"on_cancel": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 		"on_update_after_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+	},
+
+	"Material Request": {
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+	},
+	"Purchase Indent": {
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+	},
+	"Purchase Receipt": {
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
 	},
 
 	"Purchase Invoice": {
@@ -193,7 +204,8 @@ scheduler_events = {
 fixture_doctypes_with_custom_fields = [
 	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
 	"Material Request", "Material Request Item", "Company", "Request for Quotation",
-	"Request for Quotation Supplier",
+	"Request for Quotation Supplier", "Purchase Order", "Purchase Receipt",
+	"Item",
 ]
 
 fixtures = [
@@ -229,5 +241,11 @@ fixtures = [
     {
         "doctype": "Letter Head",
         "filters": [["name", "in", ["Ganges Valley School"]]],
+    },
+    # Extends naming_series / material_request_type options on erpnext core doctypes
+    # for the Service procurement flow -- see possibleworks/finance/service_naming.py.
+    {
+        "doctype": "Property Setter",
+        "filters": [["doc_type", "in", ["Material Request", "Purchase Order", "Purchase Receipt"]]],
     },
 ]
