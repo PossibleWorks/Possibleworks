@@ -2,9 +2,10 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate
+from frappe.utils import flt, get_last_day, getdate
 
 from erpnext.accounts.doctype.budget.budget import (
+	get_accumulated_monthly_budget,
 	get_actions,
 	get_actual_expense,
 	revise_budget,
@@ -58,10 +59,10 @@ def _find_cost_center_budgets(company, account, cost_center, posting_date):
 def _get_current_period(budget_name, posting_date):
 	"""The single Budget Distribution row covering posting_date, if any.
 
-	Unlike erpnext's own get_accumulated_monthly_budget (which sums every
-	elapsed period from the start of the year), this app's "monthly" budget
-	is a hard per-period cap: each month stands on its own and does not
-	roll over or accumulate against prior months.
+	Used only by approve_budget_increase to find which period's own
+	allocation to bump. The exceeded-budget check itself uses erpnext's own
+	get_accumulated_monthly_budget - unused budget from earlier periods in
+	the year rolls forward and is available in later periods.
 	"""
 	rows = frappe.db.sql(
 		"""
@@ -136,14 +137,11 @@ def _check_one_line(company, account, cost_center, posting_date, proposed_amount
 		monthly_actual = None
 		would_exceed_monthly = False
 		if monthly_action in ("Stop", "Warn"):
-			period = _get_current_period(budget.name, posting_date)
-			if period:
-				monthly_amount = flt(period.amount)
-				period_params = frappe._dict(params)
-				period_params["budget_start_date"] = period.start_date
-				period_params["budget_end_date"] = period.end_date
-				monthly_actual = flt(get_actual_expense(period_params))
-				would_exceed_monthly = (monthly_actual + proposed_amount) > monthly_amount
+			monthly_amount = flt(get_accumulated_monthly_budget(budget.name, posting_date))
+			accumulated_params = frappe._dict(params)
+			accumulated_params["month_end_date"] = get_last_day(posting_date)
+			monthly_actual = flt(get_actual_expense(accumulated_params))
+			would_exceed_monthly = (monthly_actual + proposed_amount) > monthly_amount
 
 		effective_annual_action = yearly_action
 		effective_monthly_action = monthly_action
