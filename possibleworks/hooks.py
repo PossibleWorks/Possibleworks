@@ -215,7 +215,7 @@ fixture_doctypes_with_custom_fields = [
 	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
 	"Material Request", "Material Request Item", "Company", "Request for Quotation",
 	"Request for Quotation Supplier", "Purchase Order", "Purchase Receipt",
-	"Item",
+	"Item", "Stock Entry",
 ]
 
 fixtures = [
