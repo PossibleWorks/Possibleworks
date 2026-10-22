@@ -16,20 +16,17 @@
  "fields": [
   {
    "fieldname": "entity",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Entity",
-   "options": "GVS\nGRIET\nGLWEC\nGRES\nGRCP\nMDRES\nNizam Deccan Sugars",
-   "reqd": 1
+   "label": "Entity"
   },
   {
    "fieldname": "asset_type",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Asset Type",
-   "options": "Vehicle\nLaptop\nDesktop",
    "reqd": 1
   },
   {

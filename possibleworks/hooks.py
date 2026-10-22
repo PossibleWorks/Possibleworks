@@ -129,6 +129,10 @@ doc_events = {
 	"Employee": {
 		"validate": "possibleworks.employee.block_status_change_with_active_reports",
 		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
+		# Runs after erpnext's own Employee.update_user_permissions (which fires first in
+		# the same on_update chain) -- see sync_company_user_permission for why that core
+		# method misses company transfers.
+		"on_update": "possibleworks.employee.sync_company_user_permission",
 	},
 	# Keeps a Purchase Indent's ordered_qty / % Ordered / status current. erpnext drives
 	# Material Request the same way, but through Purchase Order's own `status_updater`
@@ -138,6 +142,26 @@ doc_events = {
 		"on_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 		"on_cancel": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 		"on_update_after_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+	},
+
+	"Material Request": {
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+	},
+	"Purchase Indent": {
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+	},
+	"Purchase Receipt": {
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+	},
+
+	"Purchase Invoice": {
+		"before_validate": [
+			"possibleworks.finance.invoice_taxes.apply_tds_from_supplier",
+			"possibleworks.finance.invoice_taxes.validate_tds_rates",
+			"possibleworks.finance.invoice_taxes.validate_item_tax_templates",
+		],
+		"on_submit": "possibleworks.finance.purchase_indent_budget_status.update_from_purchase_invoice",
 	},
     "*": {
         "after_insert": "possibleworks.observer.observer.handle_workflow_event",
@@ -190,7 +214,8 @@ scheduler_events = {
 fixture_doctypes_with_custom_fields = [
 	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
 	"Material Request", "Material Request Item", "Company", "Request for Quotation",
-	"Request for Quotation Supplier",
+	"Request for Quotation Supplier", "Purchase Order", "Purchase Receipt",
+	"Item", "Stock Entry",
 ]
 
 fixtures = [
@@ -213,18 +238,10 @@ fixtures = [
             "Shift Location Zone"
         ]]],
     },
-    # Custom Print Formats + their Letter Head branding
+    # Extends naming_series / material_request_type options on erpnext core doctypes
+    # for the Service procurement flow -- see possibleworks/finance/service_naming.py.
     {
-        "doctype": "Print Format",
-        "filters": [["name", "in", [
-            "GVS Material Requisition",
-            "GVS Supplier Quotation",
-            "GVS Purchase Order",
-            "GVS Purchase Invoice",
-        ]]],
-    },
-    {
-        "doctype": "Letter Head",
-        "filters": [["name", "in", ["Ganges Valley School"]]],
+        "doctype": "Property Setter",
+        "filters": [["doc_type", "in", ["Material Request", "Purchase Order", "Purchase Receipt"]]],
     },
 ]
