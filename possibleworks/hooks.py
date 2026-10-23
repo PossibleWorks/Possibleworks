@@ -130,7 +130,10 @@ doc_events = {
 	# list, which cannot be extended from another app without overriding the class.
 	# `on_update_after_submit` is needed too: PO's "Update Items" edits qty in place.
 	"Purchase Order": {
-		"on_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
+		"on_submit": [
+			"possibleworks.finance.purchase_indent_status.update_from_purchase_order",
+			"possibleworks.finance.budget.enforce_cumulative_budget_on_submit",
+		],
 		"on_cancel": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 		"on_update_after_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
@@ -141,6 +144,7 @@ doc_events = {
 	},
 	"Purchase Indent": {
 		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+		"on_submit": "possibleworks.finance.budget.enforce_cumulative_budget_on_submit",
 	},
 	"Purchase Receipt": {
 		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
@@ -232,6 +236,6 @@ fixtures = [
     # for the Service procurement flow -- see possibleworks/finance/service_naming.py.
     {
         "doctype": "Property Setter",
-        "filters": [["doc_type", "in", ["Material Request", "Purchase Order", "Purchase Receipt"]]],
+        "filters": [["doc_type", "in", ["Material Request", "Purchase Order", "Purchase Receipt", "Budget"]]],
     },
 ]
