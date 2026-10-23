@@ -24,7 +24,7 @@ def get_starting_transitions(doctype, doc=None):
 		"Workflow", {"document_type": doctype, "is_active": 1}, "name"
 	)
 	if not workflow_name:
-		return []
+		return None
 
 	workflow = frappe.get_cached_doc("Workflow", workflow_name)
 	if not workflow.transitions:
