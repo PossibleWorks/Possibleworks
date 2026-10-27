@@ -158,7 +158,15 @@ doc_events = {
 	"Purchase Receipt": {
 		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
 	},
-
+	# Reduces payment_days for the Sandwich Leave Policy's holiday-only gap days (the
+	# bridging leave dates already reduce payment_days natively once marked Absent, so
+	# this only needs to account for the holiday dates native payroll can never see).
+	# No-op on every site until Policy Configuration.enable_sandwich_leave_policy is on
+	# and Sandwich Leave Log actually has rows for the employee/period -- see
+	# hr_documents/sandwich_leave_policy/payroll.py for the guard.
+	"Salary Slip": {
+		"validate": "possibleworks.hr_documents.sandwich_leave_policy.payroll.apply_sandwich_payment_days_adjustment",
+	},
 	"Purchase Invoice": {
 		"before_validate": [
 			"possibleworks.finance.invoice_taxes.apply_tds_from_supplier",
@@ -239,7 +247,8 @@ fixtures = [
             "AI Document Queue",
 			"Policy Configuration",
             "Possibleworks Settings",
-            "Shift Location Zone"
+            "Shift Location Zone",
+            "Sandwich Eligible Leave Type",
         ]]],
     },
     # Extends naming_series / material_request_type options on erpnext core doctypes
@@ -247,5 +256,11 @@ fixtures = [
     {
         "doctype": "Property Setter",
         "filters": [["doc_type", "in", ["Material Request", "Purchase Order", "Purchase Receipt", "Budget"]]],
+    },
+    # Role *definitions* only -- never export "Has Role" assignments here, those are
+    # per-user/per-site data and must be granted manually via the User form on each site.
+    {
+        "doctype": "Role",
+        "filters": [["name", "in", ["Attendance Sync Admin"]]],
     },
 ]
