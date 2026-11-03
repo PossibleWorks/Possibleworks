@@ -9,6 +9,9 @@ Fieldnames match India Compliance's (`gstin`, `pan`) so that app can adopt
 these fields if it's ever installed. `tax_id` is left as-is: AP invoice
 matching (ap_invoice_processing/smart_match.py) still looks suppliers up by it,
 and the PW app keeps writing the GSTIN there too.
+
+Both are mandatory, so saving an existing Supplier that has neither now fails
+until they're filled in.
 """
 
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
@@ -23,12 +26,14 @@ def execute():
 					"label": "GSTIN",
 					"fieldtype": "Data",
 					"insert_after": "tax_id",
+					"reqd": 1,
 				},
 				{
 					"fieldname": "pan",
 					"label": "PAN",
 					"fieldtype": "Data",
 					"insert_after": "gstin",
+					"reqd": 1,
 				},
 			]
 		},
