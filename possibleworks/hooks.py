@@ -65,6 +65,11 @@ jinja = {
 		"possibleworks.finance.email_helpers.get_app_deep_link",
 	],
 }
+
+# Wraps Frappe's renderer so every print (print view, PDF, email attachment, the React
+# client's get_html_and_style) can end with the "computer generated" line chosen in
+# Print Settings. Frappe calls only the LAST app's entry, so keep this the only override.
+pdf_body_html = "possibleworks.utils.computer_generated_line.pdf_body_html"
 # NOTE: do NOT list a doctype here when the .js already lives in that doctype's own
 # folder in this app -- Frappe loads it automatically, and a second entry injects the
 # file twice into the same `new Function` body (ScriptManager.setup). Any top-level
@@ -219,7 +224,7 @@ fixture_doctypes_with_custom_fields = [
 	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
 	"Material Request", "Material Request Item", "Company", "Request for Quotation",
 	"Request for Quotation Supplier", "Purchase Order", "Purchase Receipt",
-	"Item", "Stock Entry",
+	"Item", "Stock Entry", "Print Settings",
 ]
 
 fixtures = [
