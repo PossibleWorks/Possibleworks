@@ -65,6 +65,11 @@ jinja = {
 		"possibleworks.finance.email_helpers.get_app_deep_link",
 	],
 }
+
+# Wraps Frappe's renderer so every print (print view, PDF, email attachment, the React
+# client's get_html_and_style) can end with the "computer generated" line chosen in
+# Print Settings. Frappe calls only the LAST app's entry, so keep this the only override.
+pdf_body_html = "possibleworks.utils.computer_generated_line.pdf_body_html"
 # NOTE: do NOT list a doctype here when the .js already lives in that doctype's own
 # folder in this app -- Frappe loads it automatically, and a second entry injects the
 # file twice into the same `new Function` body (ScriptManager.setup). Any top-level
@@ -123,21 +128,44 @@ website_context = {
 
 doc_events = {
 	"Leave Application": {
+		"before_validate": "possibleworks.request_overlap.validate_no_attendance_request_overlap",
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
 		"on_cancel": "possibleworks.leave_application.reconstruct_attendance_on_leave_cancel",
+	},
+	"Attendance Request": {
+		"before_validate": "possibleworks.request_overlap.validate_no_leave_overlap",
 	},
 	"Employee": {
 		"validate": "possibleworks.employee.block_status_change_with_active_reports",
 		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
+		# Runs after erpnext's own Employee.update_user_permissions (which fires first in
+		# the same on_update chain) -- see sync_company_user_permission for why that core
+		# method misses company transfers.
+		"on_update": "possibleworks.employee.sync_company_user_permission",
 	},
 	# Keeps a Purchase Indent's ordered_qty / % Ordered / status current. erpnext drives
 	# Material Request the same way, but through Purchase Order's own `status_updater`
 	# list, which cannot be extended from another app without overriding the class.
 	# `on_update_after_submit` is needed too: PO's "Update Items" edits qty in place.
 	"Purchase Order": {
-		"on_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
+		"on_submit": [
+			"possibleworks.finance.purchase_indent_status.update_from_purchase_order",
+			"possibleworks.finance.budget.enforce_cumulative_budget_on_submit",
+		],
 		"on_cancel": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
 		"on_update_after_submit": "possibleworks.finance.purchase_indent_status.update_from_purchase_order",
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+	},
+
+	"Material Request": {
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+	},
+	"Purchase Indent": {
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
+		"on_submit": "possibleworks.finance.budget.enforce_cumulative_budget_on_submit",
+	},
+	"Purchase Receipt": {
+		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
 	},
 	# Reduces payment_days for the Sandwich Leave Policy's holiday-only gap days (the
 	# bridging leave dates already reduce payment_days natively once marked Absent, so
@@ -149,6 +177,11 @@ doc_events = {
 		"validate": "possibleworks.hr_documents.sandwich_leave_policy.payroll.apply_sandwich_payment_days_adjustment",
 	},
 	"Purchase Invoice": {
+		"before_validate": [
+			"possibleworks.finance.invoice_taxes.apply_tds_from_supplier",
+			"possibleworks.finance.invoice_taxes.validate_tds_rates",
+			"possibleworks.finance.invoice_taxes.validate_item_tax_templates",
+		],
 		"on_submit": "possibleworks.finance.purchase_indent_budget_status.update_from_purchase_invoice",
 	},
     "*": {
@@ -202,7 +235,8 @@ scheduler_events = {
 fixture_doctypes_with_custom_fields = [
 	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
 	"Material Request", "Material Request Item", "Company", "Request for Quotation",
-	"Request for Quotation Supplier",
+	"Request for Quotation Supplier", "Purchase Order", "Purchase Receipt",
+	"Item", "Stock Entry", "Print Settings",
 ]
 
 fixtures = [
@@ -226,19 +260,11 @@ fixtures = [
             "Sandwich Eligible Leave Type",
         ]]],
     },
-    # Custom Print Formats + their Letter Head branding
+    # Extends naming_series / material_request_type options on erpnext core doctypes
+    # for the Service procurement flow -- see possibleworks/finance/service_naming.py.
     {
-        "doctype": "Print Format",
-        "filters": [["name", "in", [
-            "GVS Material Requisition",
-            "GVS Supplier Quotation",
-            "GVS Purchase Order",
-            "GVS Purchase Invoice",
-        ]]],
-    },
-    {
-        "doctype": "Letter Head",
-        "filters": [["name", "in", ["Ganges Valley School"]]],
+        "doctype": "Property Setter",
+        "filters": [["doc_type", "in", ["Material Request", "Purchase Order", "Purchase Receipt", "Budget"]]],
     },
     # Role *definitions* only -- never export "Has Role" assignments here, those are
     # per-user/per-site data and must be granted manually via the User form on each site.

@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.permissions import add_user_permission, remove_user_permission
 from frappe.utils import get_link_to_form, today
 
 
@@ -138,6 +139,35 @@ def change_status_with_reassignment(employee, new_status, new_manager, relieving
         "reassigned": [report.name for report in active_reports],
         "new_status": new_status,
     }
+
+
+def sync_company_user_permission(doc, method):
+    # ERPNext's own Employee.update_user_permissions (erpnext/setup/doctype/employee/
+    # employee.py) only re-runs when user_id or create_user_permission changes, so it
+    # writes the Company User Permission once at onboarding and never touches it again.
+    # Transfer someone to a different company afterwards and the permission keeps
+    # pointing at the old one -- silently blocking every Company-scoped read for them
+    # (frappe.client.get_value, list views, portal pages) until someone notices and
+    # fixes it by hand in the User Permission list.
+    if not doc.user_id or not doc.create_user_permission:
+        return
+
+    if not doc.has_value_changed("company"):
+        return
+
+    previous = doc.get_doc_before_save()
+    old_company = previous.company if previous else None
+
+    if (
+        old_company
+        and old_company != doc.company
+        and frappe.db.exists(
+            "User Permission", {"user": doc.user_id, "allow": "Company", "for_value": old_company}
+        )
+    ):
+        remove_user_permission("Company", old_company, doc.user_id)
+
+    add_user_permission("Company", doc.company, doc.user_id)
 
 
 def sync_leave_approver_and_reports_to(doc, method):

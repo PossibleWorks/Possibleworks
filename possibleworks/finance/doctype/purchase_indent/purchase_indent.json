@@ -9,6 +9,7 @@
  "field_order": [
   "type_section",
   "naming_series",
+  "material_request_type",
   "title",
   "customer",
   "company",
@@ -64,10 +65,20 @@
    "no_copy": 1,
    "oldfieldname": "naming_series",
    "oldfieldtype": "Select",
-   "options": "PUR-IND-.YYYY.-",
+   "options": "PUR-IND-.YYYY.-\nSER-IND-.YYYY.-",
    "print_hide": 1,
    "reqd": 1,
    "set_only_once": 1
+  },
+  {
+   "fieldname": "material_request_type",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Purpose",
+   "no_copy": 1,
+   "options": "Purchase\nMaterial Transfer\nMaterial Issue\nManufacture\nSubcontracting\nCustomer Provided\nService",
+   "print_hide": 1,
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
