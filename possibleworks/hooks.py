@@ -128,8 +128,12 @@ website_context = {
 
 doc_events = {
 	"Leave Application": {
+		"before_validate": "possibleworks.request_overlap.validate_no_attendance_request_overlap",
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
 		"on_cancel": "possibleworks.leave_application.reconstruct_attendance_on_leave_cancel",
+	},
+	"Attendance Request": {
+		"before_validate": "possibleworks.request_overlap.validate_no_leave_overlap",
 	},
 	"Employee": {
 		"validate": "possibleworks.employee.block_status_change_with_active_reports",
