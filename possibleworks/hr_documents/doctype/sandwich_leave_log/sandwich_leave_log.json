@@ -1,0 +1,161 @@
+{
+ "actions": [],
+ "creation": "2026-09-24 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "date",
+  "is_holiday_date",
+  "is_half_day_trigger",
+  "column_break_meta",
+  "block_id",
+  "leave_type",
+  "cancelled_leave_application",
+  "section_run",
+  "run_from_date",
+  "run_to_date",
+  "processed_by",
+  "column_break_run",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "label": "Employee Name",
+   "fetch_from": "employee.employee_name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "description": "One row per affected date. Uniqueness of (employee, date) is what makes re-running the script idempotent -- a date already logged here is skipped on the next run."
+  },
+  {
+   "fieldname": "is_holiday_date",
+   "fieldtype": "Check",
+   "label": "Is Holiday Date",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Checked for the holiday/weekend gap dates (Sat/Sun) that native payroll can never see on its own. Unchecked for the bridging leave dates (e.g. Fri/Mon), which already reduce payment_days natively once marked Absent -- the Salary Slip hook only sums checked rows."
+  },
+  {
+   "fieldname": "is_half_day_trigger",
+   "fieldtype": "Check",
+   "label": "Half-Day Trigger",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Checked on the whole block (every row sharing this block's block_id) when the boundary leave application on either side was a half-day leave, not a full day. Current policy still marks the full boundary day Absent either way -- this only flags the case for review, it does not change what got applied. See the separate admin alert email sent at the time, and helpers.py's force_mark_absent docstring, for the open question of whether the worked half should have stayed paid."
+  },
+  {
+   "fieldname": "column_break_meta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "block_id",
+   "fieldtype": "Data",
+   "label": "Block ID",
+   "read_only": 1,
+   "description": "Groups all dates belonging to one detected sandwich block together."
+  },
+  {
+   "fieldname": "leave_type",
+   "fieldtype": "Link",
+   "label": "Leave Type",
+   "options": "Leave Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cancelled_leave_application",
+   "fieldtype": "Link",
+   "label": "Cancelled Leave Application",
+   "options": "Leave Application",
+   "read_only": 1,
+   "description": "The bridging Leave Application cancelled for this block, if this row's date fell on one. Empty for holiday-only rows."
+  },
+  {
+   "fieldname": "section_run",
+   "fieldtype": "Section Break",
+   "label": "Run Details"
+  },
+  {
+   "fieldname": "run_from_date",
+   "fieldtype": "Date",
+   "label": "Run From Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "run_to_date",
+   "fieldtype": "Date",
+   "label": "Run To Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "processed_by",
+   "fieldtype": "Link",
+   "label": "Processed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_run",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-24 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "HR Documents",
+ "name": "Sandwich Leave Log",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "track_changes": 0
+}

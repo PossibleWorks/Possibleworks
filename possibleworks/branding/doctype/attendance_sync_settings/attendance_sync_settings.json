@@ -1,0 +1,49 @@
+{
+ "actions": [],
+ "creation": "2026-09-25 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "clients_section",
+  "clients"
+ ],
+ "fields": [
+  {
+   "description": "One row per Company. Maps a Company to the attendance sync service instance (base URL) and the exact client name it's registered under there. Used by the Attendance Reprocess page to resolve which service/client to call for a given Company.",
+   "fieldname": "clients_section",
+   "fieldtype": "Section Break",
+   "label": "Attendance Sync Clients"
+  },
+  {
+   "fieldname": "clients",
+   "fieldtype": "Table",
+   "label": "Clients",
+   "options": "Attendance Sync Client"
+  }
+ ],
+ "hide_toolbar": 1,
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-25 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Branding",
+ "name": "Attendance Sync Settings",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Attendance Sync Admin",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
