@@ -41,7 +41,10 @@ doctype_js = {
 	"Delivery Note": "public/js/ap_invoice/ai_document_form.js",
 	"AI Document Queue": "ap_invoice_processing/doctype/ai_document_queue/ai_document_queue.js",
 	"AI Document Processor Settings": "ap_invoice_processing/doctype/ai_document_processor_settings/ai_document_processor_settings.js",
-	"Employee": "public/js/employee/employee_letters.js",
+	"Employee": [
+		"public/js/employee/employee_letters.js",
+		"public/js/employee/employee_status_reassignment.js",
+	],
 	# Route the buying flow through Purchase Indent: MR -> PI -> PO / RFQ / SQ. Each of
 	# these swaps erpnext's direct "Material Request" picker for a Purchase Indent one.
 	# Stock Entry keeps its Material Request picker on purpose -- transfer and issue
@@ -49,6 +52,7 @@ doctype_js = {
 	"Material Request": "public/js/purchase_indent/material_request_form.js",
 	"Purchase Order": "public/js/purchase_indent/purchase_order_form.js",
 	"Request for Quotation": "public/js/purchase_indent/request_for_quotation_form.js",
+	"Payroll Period": "public/js/payroll/payroll_period_attendance_report.js",
 }
 
 # Jinja methods exposed to print formats / templates (Employee letters, Notification
@@ -61,6 +65,11 @@ jinja = {
 		"possibleworks.finance.email_helpers.get_app_deep_link",
 	],
 }
+
+# Wraps Frappe's renderer so every print (print view, PDF, email attachment, the React
+# client's get_html_and_style) can end with the "computer generated" line chosen in
+# Print Settings. Frappe calls only the LAST app's entry, so keep this the only override.
+pdf_body_html = "possibleworks.utils.computer_generated_line.pdf_body_html"
 # NOTE: do NOT list a doctype here when the .js already lives in that doctype's own
 # folder in this app -- Frappe loads it automatically, and a second entry injects the
 # file twice into the same `new Function` body (ScriptManager.setup). Any top-level
@@ -119,11 +128,20 @@ website_context = {
 
 doc_events = {
 	"Leave Application": {
+		"before_validate": "possibleworks.request_overlap.validate_no_attendance_request_overlap",
 		"validate": "possibleworks.leave_application.validate_custom_attachments_required",
 		"on_cancel": "possibleworks.leave_application.reconstruct_attendance_on_leave_cancel",
 	},
+	"Attendance Request": {
+		"before_validate": "possibleworks.request_overlap.validate_no_leave_overlap",
+	},
 	"Employee": {
+		"validate": "possibleworks.employee.block_status_change_with_active_reports",
 		"before_save": "possibleworks.employee.sync_leave_approver_and_reports_to",
+		# Runs after erpnext's own Employee.update_user_permissions (which fires first in
+		# the same on_update chain) -- see sync_company_user_permission for why that core
+		# method misses company transfers.
+		"on_update": "possibleworks.employee.sync_company_user_permission",
 	},
 	# Keeps a Purchase Indent's ordered_qty / % Ordered / status current. erpnext drives
 	# Material Request the same way, but through Purchase Order's own `status_updater`
@@ -149,7 +167,15 @@ doc_events = {
 	"Purchase Receipt": {
 		"before_insert": "possibleworks.finance.service_naming.set_service_naming_series",
 	},
-
+	# Reduces payment_days for the Sandwich Leave Policy's holiday-only gap days (the
+	# bridging leave dates already reduce payment_days natively once marked Absent, so
+	# this only needs to account for the holiday dates native payroll can never see).
+	# No-op on every site until Policy Configuration.enable_sandwich_leave_policy is on
+	# and Sandwich Leave Log actually has rows for the employee/period -- see
+	# hr_documents/sandwich_leave_policy/payroll.py for the guard.
+	"Salary Slip": {
+		"validate": "possibleworks.hr_documents.sandwich_leave_policy.payroll.apply_sandwich_payment_days_adjustment",
+	},
 	"Purchase Invoice": {
 		"before_validate": [
 			"possibleworks.finance.invoice_taxes.apply_tds_from_supplier",
@@ -195,7 +221,8 @@ scheduler_events = {
         ],
     },
     "daily": [
-        "possibleworks.observer.doctype.observer_event_log.observer_event_log.run_log_cleanup"
+        "possibleworks.observer.doctype.observer_event_log.observer_event_log.run_log_cleanup",
+        "possibleworks.hr_documents.attendance_payroll_report.attendance_payroll_report.daily_attendance_report_dispatch",
     ],
 }
 
@@ -209,7 +236,7 @@ fixture_doctypes_with_custom_fields = [
 	"Leave Type", "Leave Application", "Payroll Period","Employee","Shift Location",
 	"Material Request", "Material Request Item", "Company", "Request for Quotation",
 	"Request for Quotation Supplier", "Purchase Order", "Purchase Receipt",
-	"Item", "Stock Entry",
+	"Item", "Stock Entry", "Print Settings",
 ]
 
 fixtures = [
@@ -229,7 +256,8 @@ fixtures = [
             "AI Document Queue",
 			"Policy Configuration",
             "Possibleworks Settings",
-            "Shift Location Zone"
+            "Shift Location Zone",
+            "Sandwich Eligible Leave Type",
         ]]],
     },
     # Extends naming_series / material_request_type options on erpnext core doctypes
@@ -237,5 +265,11 @@ fixtures = [
     {
         "doctype": "Property Setter",
         "filters": [["doc_type", "in", ["Material Request", "Purchase Order", "Purchase Receipt", "Budget"]]],
+    },
+    # Role *definitions* only -- never export "Has Role" assignments here, those are
+    # per-user/per-site data and must be granted manually via the User form on each site.
+    {
+        "doctype": "Role",
+        "filters": [["name", "in", ["Attendance Sync Admin"]]],
     },
 ]
