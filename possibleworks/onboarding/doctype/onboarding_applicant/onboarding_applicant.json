@@ -136,7 +136,7 @@
   {
    "fieldname": "name_section",
    "fieldtype": "Section Break",
-   "label": "Name"
+   "label": "Personal Details"
   },
   {
    "fieldname": "salutation",
@@ -526,7 +526,6 @@
    "reqd": 1
   },
   {
-   "description": "Submission is blocked until this date is reached.",
    "fieldname": "date_of_joining",
    "fieldtype": "Date",
    "in_list_view": 1,
@@ -779,7 +778,7 @@
  "index_web_pages_for_search": 0,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-19 13:00:00.000000",
+ "modified": "2026-11-17 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Onboarding",
  "name": "Onboarding Applicant",

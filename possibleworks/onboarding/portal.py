@@ -363,8 +363,8 @@ def portal_submit(
 ) -> dict:
 	"""Hand the form back to HR.
 
-	docstatus stays 0 -- HR submits the Frappe document later, on or after the Date of
-	Joining. What this does is lock the applicant out and record the declaration.
+	docstatus stays 0 -- HR submits the Frappe document later. What this does is lock
+	the applicant out and record the declaration.
 	"""
 	doc = _get_own_applicant()
 

@@ -198,7 +198,7 @@ function draw_panel(frm, wrapper, data) {
 
 	if (!has_work && !data.conditional.length) {
 		wrapper.html(
-			`<div class="alert alert-success">${__("All mandatory Employee fields are satisfied. This record is ready to submit on or after the Date of Joining.")}</div>`
+			`<div class="alert alert-success">${__("All mandatory Employee fields are satisfied. This record is ready to submit.")}</div>`
 		);
 		return;
 	}
