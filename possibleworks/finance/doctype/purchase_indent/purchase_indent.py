@@ -313,6 +313,7 @@ def make_purchase_indent(source_name, target_doc=None, args=None):
 				"validation": {"docstatus": ["=", 1]},
 				"field_map": {
 					"custom_department": "department",
+					"custom_requested_by": "requested_by",
 					"custom_purpose_note": "purpose_note",
 				},
 			},

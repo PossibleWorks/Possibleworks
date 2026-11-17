@@ -107,9 +107,10 @@ insert_after(pi, "items", [
      "options": "Company:company:default_currency"},
 ])
 
-# Standard equivalents of the two Material Request custom fields on this bench.
+# Standard equivalents of the three Material Request custom fields on this bench.
 insert_after(pi, "company", [
     {"fieldname": "department", "fieldtype": "Link", "label": "Department", "options": "Department"},
+    {"fieldname": "requested_by", "fieldtype": "Link", "label": "Requested By", "options": "User"},
     {"fieldname": "purpose_note", "fieldtype": "Small Text", "label": "Purpose"},
 ])
 

@@ -132,7 +132,7 @@ def get_material_request_stock_position(material_request):
 		"workflow_state": request.get("workflow_state"),
 		"transaction_date": request.transaction_date,
 		"schedule_date": request.schedule_date,
-		"requested_by": request.owner,
+		"requested_by": request.get("custom_requested_by") or request.owner,
 		"department": request.get("custom_department"),
 		"purpose_note": request.get("custom_purpose_note"),
 		"items": lines,
