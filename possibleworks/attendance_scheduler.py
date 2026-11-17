@@ -20,6 +20,7 @@ def mark_negative_attendance():
         filters={
             "status": "Active",
             "custom_negative_attendance": 1,
+            "date_of_joining": ("<=", today),
         },
         fields=["name", "company"],
     )
@@ -73,8 +74,17 @@ def mark_negative_attendance():
             skipped_existing += 1
             continue
 
-        # Mark Present
-        attendance_name = mark_attendance(employee, today, "Present")
+        # Mark Present. One employee's validation error must not stop the run for the rest.
+        frappe.db.savepoint("negative_attendance")
+        try:
+            attendance_name = mark_attendance(employee, today, "Present")
+        except Exception:
+            frappe.db.rollback(save_point="negative_attendance")
+            frappe.log_error(
+                f"[NegativeAttendance] Failed to mark Present for {employee} on {today}",
+                frappe.get_traceback(),
+            )
+            continue
         if attendance_name:
             logger.info(
                 f"[NegativeAttendance] Marked Present for {employee} on {today} [{attendance_name}]"
