@@ -81,6 +81,17 @@ frappe.ui.form.on("Onboarding Applicant", {
 		frm._pw_pending_carry = null;
 	},
 
+	on_submit: function (frm) {
+		// Straight to the draft checklist submit created, where HR assigns each task an owner.
+		// None when its creation failed -- the "Follow-up Needed" message covers that case.
+		if (!frm.doc.employee) return;
+		frappe.db
+			.get_value("Employee Onboarding", { employee: frm.doc.employee, docstatus: 0 }, "name")
+			.then(({ message }) => {
+				if (message?.name) frappe.set_route("Form", "Employee Onboarding", message.name);
+			});
+	},
+
 	same_as_current_address: function (frm) {
 		if (frm.doc.same_as_current_address) {
 			frm.set_value("permanent_address", frm.doc.current_address);
