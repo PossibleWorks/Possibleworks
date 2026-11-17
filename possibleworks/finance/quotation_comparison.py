@@ -1,6 +1,8 @@
 import frappe
 from frappe.utils import add_days, flt, today
 
+from possibleworks.finance.supplier_quotation_list import get_department_labels
+
 # =============================================================================
 # RFQ -> Supplier Quotation AI recommendation.
 #
@@ -79,6 +81,23 @@ def get_rfqs_with_quotations():
 	)
 
 	qualifying = [rfq for rfq in candidates if rfq.name in multi_quotation_rfqs]
+	if not qualifying:
+		return {"rfqs": []}
+
+	# An RFQ has no department of its own; it takes the departments of the Purchase
+	# Indents its items came from, and stays blank when none did.
+	rfq_indents = frappe.get_all(
+		"Request for Quotation Item",
+		filters={"parent": ["in", [rfq.name for rfq in qualifying]], "purchase_indent": ["is", "set"]},
+		fields=["parent", "purchase_indent"],
+	)
+	labels = get_department_labels({row.purchase_indent for row in rfq_indents})
+	departments = {}
+	for row in rfq_indents:
+		if row.purchase_indent in labels:
+			departments.setdefault(row.parent, set()).add(labels[row.purchase_indent])
+	for rfq in qualifying:
+		rfq.department = ", ".join(sorted(departments.get(rfq.name, ()))) or None
 
 	return {"rfqs": qualifying}
 

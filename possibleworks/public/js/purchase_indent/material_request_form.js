@@ -37,3 +37,31 @@ frappe.ui.form.on("Material Request", {
 		frm.page.set_inner_btn_group_as_primary(__("Create"));
 	},
 });
+
+// "Requested By" lists only users of the selected department (sub-departments included);
+// with no department it lists every enabled system user.
+const USERS_IN_DEPARTMENT = "possibleworks.finance.queries.users_in_department";
+const REQUESTED_BY_IN_DEPARTMENT = "possibleworks.finance.queries.requested_by_in_department";
+
+frappe.ui.form.on("Material Request", {
+	setup(frm) {
+		frm.set_query("custom_requested_by", () => ({
+			query: USERS_IN_DEPARTMENT,
+			filters: { department: frm.doc.custom_department || "" },
+		}));
+	},
+
+	custom_department(frm) {
+		if (!frm.doc.custom_requested_by) return;
+		frappe
+			.call(REQUESTED_BY_IN_DEPARTMENT, {
+				department: frm.doc.custom_department,
+				user: frm.doc.custom_requested_by,
+			})
+			.then(({ message }) => {
+				if (message && message.user !== frm.doc.custom_requested_by) {
+					frm.set_value("custom_requested_by", message.user);
+				}
+			});
+	},
+});

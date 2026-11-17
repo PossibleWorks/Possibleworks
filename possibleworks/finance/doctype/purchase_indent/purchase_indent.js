@@ -5,6 +5,28 @@ const CONTROLLER = "possibleworks.finance.doctype.purchase_indent.purchase_inden
 const MAKE_PURCHASE_INDENT = `${CONTROLLER}.make_purchase_indent`;
 
 frappe.ui.form.on("Purchase Indent", {
+	setup(frm) {
+		// Same department-scoped user list as Material Request's "Requested By".
+		frm.set_query("requested_by", () => ({
+			query: "possibleworks.finance.queries.users_in_department",
+			filters: { department: frm.doc.department || "" },
+		}));
+	},
+
+	department(frm) {
+		if (!frm.doc.requested_by) return;
+		frappe
+			.call("possibleworks.finance.queries.requested_by_in_department", {
+				department: frm.doc.department,
+				user: frm.doc.requested_by,
+			})
+			.then(({ message }) => {
+				if (message && message.user !== frm.doc.requested_by) {
+					frm.set_value("requested_by", message.user);
+				}
+			});
+	},
+
 	refresh(frm) {
 		// Pulling items in is only meaningful while the indent is still editable;
 		// raising documents from it only once it is approved.
