@@ -37,7 +37,11 @@ import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, today
 
-from possibleworks.employee import change_status_with_reassignment, get_active_direct_reports
+from possibleworks.employee import (
+	change_status_with_reassignment,
+	get_active_direct_reports,
+	mark_employee_left,
+)
 from possibleworks.observer.observer import WorkflowEventObserver
 
 
@@ -385,3 +389,51 @@ class TestEmployeeStatusReassignment(IntegrationTestCase):
 
 		self.assertEqual(frappe.db.get_value("Employee", manager.name, "status"), "Inactive")
 		self.assertEqual(frappe.db.get_value("Employee", report.name, "reports_to"), manager.name)
+
+	def _mark_left(self, manager, **kwargs):
+		"""mark_employee_left for a `_new_manager()` fixture; see `_change_status`."""
+		manager.db_set("user_id", None)
+		return mark_employee_left(employee=manager.name, **kwargs)
+
+	def test_mark_left_reassigns_reports_even_with_the_flag_off(self):
+		"""PossibleWorks' Deactivate must work on every site: erpnext blocks Left while
+		anyone reports to the employee, whatever Policy Configuration says."""
+		frappe.db.set_value(
+			"Policy Configuration", "Policy Configuration", "enable_manager_status_reassignment", 0
+		)
+		self.addCleanup(
+			lambda: frappe.db.set_value(
+				"Policy Configuration", "Policy Configuration", "enable_manager_status_reassignment", 1
+			)
+		)
+		manager = self._new_manager()
+		report = self._new_employee(reports_to=manager.name)
+
+		result = self._mark_left(manager, relieving_date=today(), new_manager=self.new_manager_name)
+
+		self.assertEqual(result["reassigned"], [report.name])
+		self.assertEqual(
+			frappe.db.get_value("Employee", report.name, "reports_to"), self.new_manager_name
+		)
+		self.assertEqual(frappe.db.get_value("Employee", manager.name, "status"), "Left")
+		self.assertEqual(
+			str(frappe.db.get_value("Employee", manager.name, "relieving_date")), today()
+		)
+
+	def test_mark_left_refuses_when_reports_remain_and_no_manager_given(self):
+		manager = self._new_manager()
+		report = self._new_employee(reports_to=manager.name)
+
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			self._mark_left(manager, relieving_date=today())
+
+		self.assertIn(report.employee_name, str(ctx.exception))
+		self.assertEqual(frappe.db.get_value("Employee", manager.name, "status"), "Active")
+
+	def test_mark_left_without_reports_needs_no_manager(self):
+		manager = self._new_manager()
+
+		result = self._mark_left(manager, relieving_date=today())
+
+		self.assertEqual(result["reassigned"], [])
+		self.assertEqual(frappe.db.get_value("Employee", manager.name, "status"), "Left")
