@@ -264,7 +264,10 @@ fixtures = [
     # for the Service procurement flow -- see possibleworks/finance/service_naming.py.
     {
         "doctype": "Property Setter",
-        "filters": [["doc_type", "in", ["Material Request", "Purchase Order", "Purchase Receipt", "Budget"]]],
+        "filters": [["doc_type", "in", [
+            "Material Request", "Purchase Order", "Purchase Receipt", "Budget",
+            "Request for Quotation Supplier",
+        ]]],
     },
     # Role *definitions* only -- never export "Has Role" assignments here, those are
     # per-user/per-site data and must be granted manually via the User form on each site.
