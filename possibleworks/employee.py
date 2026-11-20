@@ -3,6 +3,8 @@ from frappe import _
 from frappe.permissions import add_user_permission, remove_user_permission
 from frappe.utils import get_link_to_form, today
 
+from possibleworks.observer.constants import DEFER_IMMEDIATE_SEND_FLAG
+
 
 def _manager_reassignment_enabled():
     # Same Policy Configuration gate as sync_leave_approver_and_reports_to. Defaults to
@@ -83,6 +85,59 @@ def change_status_with_reassignment(employee, new_status, new_manager, relieving
     if new_status not in STATUSES_REQUIRING_MANAGER_REASSIGNMENT:
         frappe.throw(_("{0} is not a status that requires reassigning reports.").format(new_status))
 
+    reassigned = _reassign_active_reports(employee, new_manager)
+
+    employee_doc = frappe.get_doc("Employee", employee)
+    employee_doc.status = new_status
+    if new_status == "Left" and relieving_date:
+        employee_doc.relieving_date = relieving_date
+    employee_doc.save()
+
+    return {
+        "reassigned": reassigned,
+        "new_status": new_status,
+    }
+
+
+@frappe.whitelist(methods=["POST"])
+def mark_employee_left(employee, relieving_date, new_manager=None):
+    """PossibleWorks' Deactivate: move any active reports to `new_manager`, then set Left.
+
+    Not gated by Policy Configuration the way change_status_with_reassignment is: erpnext
+    refuses Left while anyone still reports to the employee, so the move is needed either
+    way. Employee saves are immediate-send Observer events, which commit; deferring them
+    keeps the reassignment and the Left change one transaction, and keeps the echo of
+    this change from reaching PossibleWorks while its own deactivation is still running.
+    """
+    frappe.has_permission("Employee", "write", doc=employee, throw=True)
+
+    if not relieving_date:
+        frappe.throw(_("Relieving date is required to mark an employee as Left."))
+
+    active_reports = _get_active_direct_reports(employee)
+    if active_reports and not new_manager:
+        frappe.throw(
+            _("{0} still has employees reporting to them in HRIS: {1}. Reassign them before deactivating.").format(
+                employee, ", ".join(report.employee_name or report.name for report in active_reports)
+            ),
+            title=_("Cannot Deactivate Employee"),
+        )
+    frappe.flags[DEFER_IMMEDIATE_SEND_FLAG] = True
+    try:
+        reassigned = _reassign_active_reports(employee, new_manager) if active_reports else []
+
+        employee_doc = frappe.get_doc("Employee", employee)
+        employee_doc.status = "Left"
+        employee_doc.relieving_date = relieving_date
+        employee_doc.save()
+    finally:
+        frappe.flags[DEFER_IMMEDIATE_SEND_FLAG] = False
+
+    return {"reassigned": reassigned}
+
+
+def _reassign_active_reports(employee, new_manager):
+    """Point `employee`'s active direct reports at `new_manager`. Returns their names."""
     if not new_manager:
         frappe.throw(_("Please select a manager to reassign the reports to."))
 
@@ -129,16 +184,7 @@ def change_status_with_reassignment(employee, new_status, new_manager, relieving
         report_doc.leave_approver = new_manager_user_id
         report_doc.save()
 
-    employee_doc = frappe.get_doc("Employee", employee)
-    employee_doc.status = new_status
-    if new_status == "Left" and relieving_date:
-        employee_doc.relieving_date = relieving_date
-    employee_doc.save()
-
-    return {
-        "reassigned": [report.name for report in active_reports],
-        "new_status": new_status,
-    }
+    return [report.name for report in active_reports]
 
 
 def sync_company_user_permission(doc, method):

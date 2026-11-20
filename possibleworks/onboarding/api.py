@@ -357,8 +357,8 @@ def save_applicant(
 def submit_applicant_section(name: str, declaration_accepted: bool = False) -> dict:
 	"""The applicant's "I'm done".
 
-	`docstatus` REMAINS 0 -- HR submits the Frappe document later, and only on or
-	after the Date of Joining. What this actually does is validate fully and revoke
+	`docstatus` REMAINS 0 -- HR submits the Frappe document later. What this
+	actually does is validate fully and revoke
 	the applicant's write access by moving `status` to Applicant Submitted. HR can
 	send it back for correction by setting `status` to Awaiting Applicant again.
 	"""
