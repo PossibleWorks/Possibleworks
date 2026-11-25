@@ -64,6 +64,11 @@ RENDERABLE_FIELDTYPES = frozenset({
 	"Password",
 })
 
+# Employee fields the submit sets itself, so HR is never asked for them even where a
+# site makes them mandatory: `user_id` is the User created from the work email
+# (provisioning.create_employee_user).
+SET_AT_CREATION = frozenset({"user_id"})
+
 # Docfield properties forwarded to the client. Everything else is dropped -- see
 # _serialise_docfield for why that matters.
 _KEEP_PROPERTIES = (
@@ -200,6 +205,8 @@ def resolve(applicant, preview=None) -> dict:
 		if not df:
 			# parent/parenttype from the istable branch; not applicable to Employee.
 			continue
+		if fieldname in SET_AT_CREATION:
+			continue
 		seen.add(fieldname)
 
 		if df.fieldtype in table_fields:
@@ -252,7 +259,12 @@ def describe(applicant) -> dict:
 	"""Full payload for the Desk panel and the external app -- one shared contract,
 	so the two can never disagree about what is still outstanding."""
 	preview = build_employee(applicant)
-	buckets = resolve(applicant, preview=preview)
+	# What the submit will see: the form plus the captured values.
+	gate = resolve(applicant, preview=preview)
+	# What the panel lists: the fields the form itself leaves missing. Captured values must
+	# not shrink this, or a saved field drops off the panel and the next save -- which
+	# rewrites the capture table from the panel -- loses its value.
+	buckets = resolve(applicant, preview=build_employee(applicant, include_captured=False))
 	captured = {
 		row.fieldname: row.value
 		for row in (applicant.get("pending_employee_fields") or [])
@@ -264,7 +276,7 @@ def describe(applicant) -> dict:
 			df["value"] = captured.get(df["fieldname"])
 
 	return {
-		"ready": not (buckets["native"] or buckets["blocking"] or buckets["manual"]),
+		"ready": not (gate["native"] or gate["blocking"] or gate["manual"]),
 		"native": buckets["native"],
 		"blocking": buckets["blocking"],
 		"conditional": buckets["conditional"],

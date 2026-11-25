@@ -176,8 +176,11 @@ def apply_employee_number(applicant, employee) -> None:
 		employee.employee_number = applicant.employee_number
 
 
-def build_employee(applicant):
+def build_employee(applicant, include_captured: bool = True):
 	"""Return an unsaved, in-memory `Employee` built from `applicant`.
+
+	`include_captured=False` leaves out the values captured in the pending-fields panel,
+	so the panel can still list the fields it is collecting once they are filled in.
 
 	Used for BOTH the pre-submit dry run and the real creation, so the fields we
 	check for completeness can never drift from the fields we actually write.
@@ -210,7 +213,7 @@ def build_employee(applicant):
 		employee.append("external_work_history", {f: row.get(f) for f in WORK_HISTORY_FIELDS})
 
 	# Site-specific mandatory Employee fields captured via the pending-fields panel.
-	for row in applicant.get("pending_employee_fields") or []:
+	for row in (applicant.get("pending_employee_fields") or []) if include_captured else []:
 		if not row.fieldname or not meta.has_field(row.fieldname):
 			continue
 		value = coerce_value(row.value, row.fieldtype or meta.get_field(row.fieldname).fieldtype)
