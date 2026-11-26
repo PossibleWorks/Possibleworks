@@ -176,17 +176,28 @@ class OnboardingDocumentTemplate(Document):
 			seen[row.document_type] = row.idx
 
 	def validate_single_default(self) -> None:
-		"""Only one default, or the fallback would be ambiguous."""
+		"""One default per company, or the fallback would be ambiguous.
+
+		A blank company is its own bucket: the global default, used by companies
+		that have no default of their own.
+		"""
 		if not self.is_default:
 			return
 
 		existing = frappe.db.get_value(
-			"Onboarding Document Template", {"is_default": 1, "name": ("!=", self.name)}, "name"
+			"Onboarding Document Template",
+			{
+				"is_default": 1,
+				"name": ("!=", self.name),
+				"applies_to_company": self.applies_to_company or ("is", "not set"),
+			},
+			"name",
 		)
 		if existing:
 			frappe.throw(
-				_("{0} is already the default template. Clear its Default flag first.").format(
-					frappe.bold(existing)
+				_("{0} is already the default template for {1}. Clear its Default flag first.").format(
+					frappe.bold(existing),
+					frappe.bold(self.applies_to_company or _("all companies")),
 				),
 				title=_("Default Already Set"),
 			)
