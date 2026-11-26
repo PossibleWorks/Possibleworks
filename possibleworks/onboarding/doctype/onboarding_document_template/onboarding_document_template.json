@@ -43,7 +43,7 @@
   },
   {
    "default": "0",
-   "description": "Used when no other template matches an applicant. Only one template can be the default.",
+   "description": "Used when no other template matches an applicant. Only one template per company can be the default; a template with no company is the default for all companies.",
    "fieldname": "is_default",
    "fieldtype": "Check",
    "in_list_view": 1,

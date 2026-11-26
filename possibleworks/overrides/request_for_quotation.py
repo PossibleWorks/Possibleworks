@@ -5,6 +5,7 @@ from erpnext.buying.doctype.request_for_quotation.request_for_quotation import R
 from frappe.email.doctype.email_account.email_account import EmailAccount
 from frappe.utils import format_date
 
+from possibleworks.finance.queries import supplier_contact_number
 from possibleworks.finance.rfq_portal import build_guest_quotation_url, generate_and_store_token
 
 # Same PossibleWorks email-card styling used by pw-server-v3's own
@@ -38,6 +39,20 @@ def _build_supplier_email_html(supplier_name, rfq_name, schedule_date, buyer_mes
 
 
 class CustomRequestForQuotation(RequestforQuotation):
+	def validate(self):
+		super().validate()
+		self.set_contact_numbers()
+
+	def set_contact_numbers(self):
+		"""Keep each supplier row's pw_contact_number in step with its contacts.
+
+		Filled here rather than with fetch_from: fetch_from can only copy one contact's
+		mobile_no, which is empty unless a number is ticked "Is Primary Mobile", and the
+		number may be on another of the supplier's contacts.
+		"""
+		for row in self.suppliers:
+			row.pw_contact_number = supplier_contact_number(row.supplier, row.contact)
+
 	def send_to_supplier(self):
 		"""
 		Overrides ERPNext's native send_to_supplier(): replaces the login-gated
@@ -48,8 +63,10 @@ class CustomRequestForQuotation(RequestforQuotation):
 		Mail sending/attachments are untouched - only the message content and
 		the link itself change. Also skips update_supplier_contact (no
 		Website User is provisioned - there's nothing for it to log into).
+
+		Link validity is set per supplier row (pw_quotation_link_validity_days),
+		7 days when a row has none.
 		"""
-		validity_days = self.pw_quotation_link_validity_days or 7
 		original_message = self.message_for_supplier
 
 		try:
@@ -58,6 +75,7 @@ class CustomRequestForQuotation(RequestforQuotation):
 					self.validate_email_id(rfq_supplier)
 					self.update_supplier_part_no(rfq_supplier.supplier)
 
+					validity_days = rfq_supplier.get("pw_quotation_link_validity_days") or 7
 					token = generate_and_store_token(rfq_supplier, validity_days)
 					guest_link = build_guest_quotation_url(token, self.company)
 					if not guest_link:

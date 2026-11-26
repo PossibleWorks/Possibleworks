@@ -12,10 +12,23 @@ here.
 """
 
 import frappe
-from frappe import _
 from frappe.utils import cint
 
-LINK_FILTERS = ("both", "rfq_only", "pi_only", "none")
+from possibleworks.finance.list_filters import row_matches
+from possibleworks.finance.queries import (
+	_document_purposes,
+	search_document_names,
+	search_vocabulary,
+	search_words,
+)
+
+# Which documents a quotation was raised from, as the list's "PI ID" filter offers it.
+LINK_FILTER_LABELS = {
+	"both": "Both RFQ and PI",
+	"rfq_only": "Only RFQ",
+	"pi_only": "Only PI",
+	"none": "None",
+}
 
 # PI ID / RFQ ID headers order the groups themselves; every other column orders the
 # rows inside each group, and the groups by their best row.
@@ -35,18 +48,26 @@ SEARCH_FIELDS = ("name", "supplier_name", "status", "department", "transaction_d
 
 @frappe.whitelist()
 def get_supplier_quotation_groups(
-	link_filter=None, search=None, sort_by="modified", sort_order="desc", page=0, page_size=10
+	search=None,
+	sort_by="modified",
+	sort_order="desc",
+	page=0,
+	page_size=10,
+	column_filters=None,
 ):
-	if link_filter and link_filter not in LINK_FILTERS:
-		frappe.throw(_("Unknown link filter: {0}").format(link_filter))
 	if sort_by not in GROUP_SORT_FIELDS and sort_by not in ROW_SORT_FIELDS:
 		sort_by = "modified"
 	descending = sort_order != "asc"
 
+	words = search_words(search)
+	# Per word, the quotations whose own content (items, supplier, source documents, ...) has it.
+	content_matches = [search_document_names("Supplier Quotation", [word]) for word in words]
+	shown = _shown_values()
 	rows = [
 		row
 		for row in _load_rows()
-		if (not link_filter or link_type(row) == link_filter) and _matches_search(row, search)
+		if _matches_search(row, words, content_matches)
+		and row_matches(row, column_filters, shown)
 	]
 	pages = paginate(sort_groups(group_rows(rows), sort_by, descending), max(1, cint(page_size)))
 	page = min(max(cint(page), 0), max(len(pages) - 1, 0))
@@ -57,6 +78,7 @@ def get_supplier_quotation_groups(
 		"total_pages": len(pages),
 		"total_rows": len(rows),
 		"rows_through_page": sum(len(group["rows"]) for groups in pages[: page + 1] for group in groups),
+		"vocabulary": search_vocabulary("Supplier Quotation", [row["name"] for row in rows], words),
 	}
 
 
@@ -153,12 +175,43 @@ def _sorted(items, value, descending):
 	return sorted(present, key=comparable, reverse=descending) + blank
 
 
-def _matches_search(row, search):
-	term = (search or "").strip().lower()
-	if not term:
+def _matches_search(row, words, content_matches):
+	"""Every word is in one of the row's columns or somewhere in the quotation's content."""
+	if not words:
 		return True
 	values = [str(row.get(field) or "") for field in SEARCH_FIELDS] + row["purchase_indents"] + row["rfqs"]
-	return any(term in value.lower() for value in values)
+	text = "\n".join(values).lower()
+	return all(word in text or row["name"] in matches for word, matches in zip(words, content_matches))
+
+
+def _shown_values():
+	"""How each worked-out column of a row reads in the list, for column filters."""
+	purposes = {}
+	return {
+		"status": lambda row: {
+			row["workflow_state"]
+			if row.get("workflow_state") and row["workflow_state"].lower() != "draft"
+			else row.get("status")
+		},
+		"department": lambda row: {d.strip() for d in (row.get("department") or "").split(",") if d.strip()},
+		"purpose": lambda row: set(_document_purposes("Supplier Quotation", row["name"], purposes)),
+		"link_type": lambda row: {link_type(row)},
+	}
+
+
+def filter_options(fields):
+	"""{field: [{"value", "label"}]} of the values the readable quotations show."""
+	rows = _load_rows()
+	shown = _shown_values()
+	options = {}
+	for field in fields:
+		if field == "link_type":
+			options[field] = [{"value": value, "label": label} for value, label in LINK_FILTER_LABELS.items()]
+			continue
+		read = shown.get(field, lambda row, field=field: {row.get(field)})
+		values = {value for row in rows for value in read(row) if value not in (None, "")}
+		options[field] = [{"value": v, "label": v} for v in sorted({str(v) for v in values}, key=str.lower)]
+	return options
 
 
 def _load_rows():

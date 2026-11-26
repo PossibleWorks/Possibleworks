@@ -706,16 +706,14 @@ class TestOnboardingApplicant(IntegrationTestCase):
 		doc.save()
 		return doc
 
-	def test_submit_blocked_before_date_of_joining(self):
+	def test_submit_allowed_before_date_of_joining(self):
+		"""HR may onboard ahead of the joining date, so pre-joining tasks can be assigned."""
 		doc = self.satisfy_documents(self.make_ready_applicant(date_of_joining=add_days(today(), 5)))
-		with self.assertRaises(frappe.ValidationError) as ctx:
-			doc.submit()
-		self.assertIn("Date of Joining", str(ctx.exception))
-		doc.reload()
-		self.assertEqual(doc.docstatus, 0)
+		doc.submit()
+		self.assertEqual(doc.docstatus, 1)
+		self.assertEqual(doc.status, ONBOARDED)
 
 	def test_submit_allowed_on_date_of_joining(self):
-		"""The boundary: submission is permitted ON the date, not only after it."""
 		doc = self.satisfy_documents(self.make_ready_applicant(date_of_joining=today()))
 		doc.submit()
 		self.assertEqual(doc.docstatus, 1)

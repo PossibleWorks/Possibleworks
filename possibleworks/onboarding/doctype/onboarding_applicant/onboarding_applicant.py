@@ -32,7 +32,7 @@ import frappe
 from frappe import _
 from frappe.model import no_value_fields, table_fields
 from frappe.model.document import Document
-from frappe.utils import cint, flt, formatdate, get_link_to_form, getdate, today
+from frappe.utils import cint, flt, get_link_to_form, getdate, today
 
 from possibleworks.observer.constants import DEFER_IMMEDIATE_SEND_FLAG
 from possibleworks.onboarding import boarding, pending_fields, provisioning, validators
@@ -109,7 +109,6 @@ class OnboardingApplicant(Document):
 		self.enforce_applicant_field_allowlist()
 
 	def before_submit(self):
-		self.validate_joining_date_reached()
 		self.validate_ready_for_onboarding()
 		self.validate_no_employee_already_created()
 		self.validate_bank_details()
@@ -792,16 +791,6 @@ class OnboardingApplicant(Document):
 	# ------------------------------------------------------------------ #
 	# before_submit() gates
 	# ------------------------------------------------------------------ #
-
-	def validate_joining_date_reached(self) -> None:
-		if getdate(today()) < getdate(self.date_of_joining):
-			frappe.throw(
-				_("This onboarding cannot be submitted before the Date of Joining ({0}). Today is {1}.").format(
-					frappe.bold(formatdate(self.date_of_joining)),
-					frappe.bold(formatdate(today())),
-				),
-				title=_("Too Early to Onboard"),
-			)
 
 	def validate_ready_for_onboarding(self) -> None:
 		if self.status != READY_TO_ONBOARD:
